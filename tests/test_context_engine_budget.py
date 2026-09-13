@@ -36,8 +36,10 @@ def test_schema_tokens_reduce_route_message_window(monkeypatch):
     )
 
     assert plan.schema_tokens == estimate_schema_tokens(schemas)
-    assert plan.message_window == 8192 - plan.schema_tokens
-    assert plan.tokens_after <= plan.message_window - plan.output_reserve
+    assert plan.message_window == 8192
+    assert plan.tokens_after <= (
+        plan.message_window - plan.output_reserve - plan.schema_tokens
+    )
     assert shaped[-1]["role"] == "user"
 
 

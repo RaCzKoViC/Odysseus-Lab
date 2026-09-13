@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
@@ -98,16 +99,26 @@ def shape_messages_for_route(
     else:
         input_budget = context_length
 
-    # trim_for_context subtracts output_reserve itself. Reserve schema overhead
-    # first so messages + provider tools + output all fit the same route budget.
-    message_window = max(output_reserve + 64, input_budget - schema_tokens)
+    # Preserve the route's context window as the trimmer's first argument and
+    # reserve both output and schema overhead inside it. This keeps historical
+    # trim extension points stable while making provider tools part of the same
+    # allocation.
+    message_window = input_budget
+    combined_reserve = output_reserve + schema_tokens
     before_tokens = int(model_context.estimate_tokens(messages))
     trimmer = trim_function or compactor_module.trim_for_context
-    shaped = trimmer(
-        list(messages),
-        message_window,
-        reserve_tokens=output_reserve,
-    )
+    parameters = inspect.signature(trimmer).parameters
+    if "reserve_tokens" in parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        shaped = trimmer(
+            list(messages),
+            message_window,
+            reserve_tokens=combined_reserve,
+        )
+    else:
+        shaped = trimmer(list(messages), message_window)
     plan = RouteBudgetPlan(
         model=model or "",
         context_length=context_length,
