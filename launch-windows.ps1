@@ -32,7 +32,7 @@ function Fail($msg) {
 
 function Test-WindowsBashStub($path) {
     if (-not $path) { return $false }
-    $lowered = $path.ToLowerInvariant()
+    $lowered = $path.Replace('/', '\').ToLowerInvariant()
     foreach ($stub in @("system32\bash.exe", "sysnative\bash.exe", "windowsapps\bash.exe")) {
         if ($lowered.Contains($stub)) { return $true }
     }
@@ -40,10 +40,22 @@ function Test-WindowsBashStub($path) {
 }
 
 function Find-GitBash {
-    $cmd = Get-Command bash -ErrorAction SilentlyContinue
+    $cmd = Get-Command bash -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cmd -and -not (Test-WindowsBashStub $cmd.Source)) { return $cmd.Source }
 
     $roots = @()
+    # The installer may expose only <custom Git root>\cmd on PATH.
+    $gitCommand = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($gitCommand) {
+        $gitDirectory = Split-Path -Parent $gitCommand.Source
+        $gitRoot = Split-Path -Parent $gitDirectory
+        if ((Split-Path -Leaf $gitDirectory) -in @('cmd', 'bin')) {
+            if ((Split-Path -Leaf $gitRoot) -in @('mingw64', 'mingw32', 'usr')) {
+                $gitRoot = Split-Path -Parent $gitRoot
+            }
+            $roots += $gitRoot
+        }
+    }
     foreach ($name in @("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LocalAppData")) {
         $base = [Environment]::GetEnvironmentVariable($name)
         if ($base) {
@@ -56,7 +68,7 @@ function Find-GitBash {
     foreach ($root in ($roots | Select-Object -Unique)) {
         foreach ($relative in @("bin\bash.exe", "usr\bin\bash.exe")) {
             $candidate = Join-Path $root $relative
-            if (Test-Path $candidate) { return $candidate }
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
         }
     }
     return $null
