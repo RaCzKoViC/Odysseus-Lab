@@ -128,6 +128,17 @@ def test_session_assignment_cannot_cross_owners(monkeypatch, tmp_path):
     assert attached.json()["project_id"] == project["id"]
     assert client.put(f"/api/projects/{project['id']}/sessions/{bob_id}").status_code == 404
 
+    # Even a malformed legacy row cannot leak through a matching project UUID.
+    db = TestSession()
+    try:
+        db.query(database.Session).filter(database.Session.id == bob_id).update(
+            {database.Session.project_id: project["id"]},
+            synchronize_session=False,
+        )
+        db.commit()
+    finally:
+        db.close()
+
     sessions = client.get(f"/api/projects/{project['id']}/sessions").json()
     assert [item["id"] for item in sessions] == [alice_id]
 

@@ -82,17 +82,21 @@ def _serialize(project: Project, *, session_count: Optional[int] = None) -> dict
 
 
 def _session_for_owner(db, owner: str, session_id: str) -> DbSession:
-    query = db.query(DbSession).filter(DbSession.id == session_id)
-    if owner == DEFAULT_LOCAL_OWNER:
-        query = query.filter(
-            (DbSession.owner == None) | (DbSession.owner == DEFAULT_LOCAL_OWNER)  # noqa: E711
-        )
-    else:
-        query = query.filter(DbSession.owner == owner)
+    query = _sessions_for_owner(db.query(DbSession), owner).filter(
+        DbSession.id == session_id
+    )
     session = query.first()
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+
+def _sessions_for_owner(query, owner: str):
+    if owner == DEFAULT_LOCAL_OWNER:
+        return query.filter(
+            (DbSession.owner == None) | (DbSession.owner == DEFAULT_LOCAL_OWNER)  # noqa: E711
+        )
+    return query.filter(DbSession.owner == owner)
 
 
 def _sync_cached_session(session_id: str, project_id: Optional[str]) -> None:
@@ -120,7 +124,10 @@ def setup_project_routes() -> APIRouter:
                 include_archived=include_archived,
             ).order_by(Project.sort_order, Project.updated_at.desc()).all()
             counts = dict(
-                db.query(DbSession.project_id, func.count(DbSession.id))
+                _sessions_for_owner(
+                    db.query(DbSession.project_id, func.count(DbSession.id)),
+                    owner,
+                )
                 .filter(DbSession.project_id.in_([project.id for project in projects]))
                 .group_by(DbSession.project_id)
                 .all()
@@ -177,9 +184,9 @@ def setup_project_routes() -> APIRouter:
         db = SessionLocal()
         try:
             project = get_owned_project(db, owner, project_id, include_archived=True)
-            count = db.query(func.count(DbSession.id)).filter(
-                DbSession.project_id == project.id
-            ).scalar() or 0
+            count = _sessions_for_owner(
+                db.query(func.count(DbSession.id)), owner
+            ).filter(DbSession.project_id == project.id).scalar() or 0
             return _serialize(project, session_count=count)
         finally:
             db.close()
@@ -245,7 +252,7 @@ def setup_project_routes() -> APIRouter:
         try:
             project = get_owned_project(db, owner, project_id, include_archived=True)
             sessions = (
-                db.query(DbSession)
+                _sessions_for_owner(db.query(DbSession), owner)
                 .filter(DbSession.project_id == project.id)
                 .order_by(DbSession.last_message_at.desc(), DbSession.updated_at.desc())
                 .limit(5)
@@ -253,7 +260,7 @@ def setup_project_routes() -> APIRouter:
             )
             return {
                 "project": _serialize(project, session_count=(
-                    db.query(func.count(DbSession.id))
+                    _sessions_for_owner(db.query(func.count(DbSession.id)), owner)
                     .filter(DbSession.project_id == project.id)
                     .scalar() or 0
                 )),
@@ -277,7 +284,7 @@ def setup_project_routes() -> APIRouter:
         try:
             project = get_owned_project(db, owner, project_id, include_archived=True)
             sessions = (
-                db.query(DbSession)
+                _sessions_for_owner(db.query(DbSession), owner)
                 .filter(DbSession.project_id == project.id, DbSession.archived == False)  # noqa: E712
                 .order_by(DbSession.last_message_at.desc(), DbSession.updated_at.desc())
                 .all()
