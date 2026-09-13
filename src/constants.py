@@ -5,7 +5,7 @@ import os
 from src.runtime_paths import get_app_root, get_default_data_dir
 
 PRODUCT_NAME = "Odysseus-Lab"
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.3.0"
 APP_DISTRIBUTION = "lab"
 REPOSITORY_URL = "https://github.com/RaCzKoViC/Odysseus-Lab"
 UPSTREAM_NAME = "Odysseus"

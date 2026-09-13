@@ -99,6 +99,8 @@ Current major frontend areas include:
 - `static/js/projects.js` owns the Lab Project Pane, project CRUD, Overview,
   Conversations, managed Files, and project Settings; `static/project.css`
   isolates its responsive layout from the upstream stylesheet;
+- `static/js/contextInspector.js` owns Context Manifest loading, Session/Last
+  turn lenses, category provenance, and supported context actions;
 
 Coordinator ownership:
 

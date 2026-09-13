@@ -54,6 +54,10 @@ hashed build output.
 
 Direct app-owned endpoints include `/api/generated-image/{filename}`, `/backgrounds`, `/login`, `/api/version`, `/api/health`, `/api/ready`, `/api/runtime`, and `/api/activity/heartbeat`. `/backgrounds` points at `static/backgrounds.html`; if that file is absent or the route remains auth-gated, that is route/static drift rather than an intentional public contract.
 
+History routes expose owner-scoped persisted context usage at
+`/api/session/{id}/context` and the secret-free typed Context Manifest at
+`/api/session/{id}/context_breakdown`.
+
 `/static/*` is auth-exempt and public. SPA HTML routes are auth-gated except `/login`, and they are nonce-injected dynamic `HTMLResponse` values outside the static mount. Generated images and videos are served from `data/generated_images` through the generated-image resolver with immutable/nosniff caching.
 
 ## Runtime Security Boundaries
