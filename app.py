@@ -809,6 +809,9 @@ app.include_router(setup_cookbook_routes())
 from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
 
+from routes.project import setup_project_routes
+app.include_router(setup_project_routes())
+
 # Hardware model fitting (cookbook "What Fits?" tab)
 from routes.hwfit_routes import setup_hwfit_routes
 app.include_router(setup_hwfit_routes())
@@ -937,6 +940,12 @@ async def serve_tasks(request: Request):
 
 @app.get("/library")
 async def serve_library(request: Request):
+    return await serve_index(request)
+
+
+@app.get("/projects")
+@app.get("/projects/{project_id}")
+async def serve_projects(request: Request, project_id: str = ""):
     return await serve_index(request)
 
 @app.get("/backgrounds")

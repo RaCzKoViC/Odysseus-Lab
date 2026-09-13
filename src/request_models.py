@@ -126,6 +126,7 @@ class SessionResponse(BaseModel):
     model: str = Field(..., description="Model being used")
     rag: bool = Field(default=False, description="RAG enabled")
     archived: bool = Field(default=False, description="Whether session is archived")
+    project_id: Optional[str] = Field(default=None, description="Associated project")
 
 
 class MemoryResponse(BaseModel):
