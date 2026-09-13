@@ -25,7 +25,7 @@ Each project has:
 - normalized storage `owner`;
 - `name`, `description`, `status`, and `sort_order`;
 - allowlisted `settings`;
-- a managed `default_workspace_path`.
+- a portable managed `default_workspace_path` relative to `DATA_DIR`.
 
 `status` is `active` or `archived`. Deletion through the 0.2.0 API is a soft
 archive and never deletes conversations or workspace files.

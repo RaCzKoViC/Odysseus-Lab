@@ -137,7 +137,7 @@ def setup_project_routes() -> APIRouter:
             raise HTTPException(status_code=422, detail="Project name is required")
         settings = _validate_settings(body.settings)
         project_id = str(uuid.uuid4())
-        workspace = ensure_project_workspace(project_id)
+        ensure_project_workspace(project_id)
         db = SessionLocal()
         try:
             duplicate = (
@@ -154,7 +154,7 @@ def setup_project_routes() -> APIRouter:
                 description=body.description.strip(),
                 status="active",
                 settings=settings,
-                default_workspace_path=str(workspace),
+                default_workspace_path=f"projects/{project_id}/workspace",
             )
             db.add(project)
             db.commit()
@@ -336,10 +336,11 @@ def setup_project_routes() -> APIRouter:
             project = get_owned_project(db, owner, project_id, include_archived=True)
         finally:
             db.close()
+        workspace = ensure_project_workspace(project.id)
         entries = list_project_workspace(project.id)
         return {
             "project_id": project.id,
-            "workspace": project.default_workspace_path,
+            "workspace": str(workspace),
             "entries": entries,
             "truncated": len(entries) >= MAX_FILE_ENTRIES,
         }

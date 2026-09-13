@@ -52,6 +52,7 @@ def test_project_crud_is_owner_scoped(monkeypatch, tmp_path):
     assert project["owner"] == "alice"
     assert project["status"] == "active"
     assert project["session_count"] == 0
+    assert project["default_workspace_path"] == f"projects/{project['id']}/workspace"
 
     assert client.get(
         f"/api/projects/{project['id']}",
