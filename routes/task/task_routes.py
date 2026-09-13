@@ -157,6 +157,8 @@ class TaskCreate(BaseModel):
     then_task_id: Optional[str] = None            # chain: run this task after success
     notifications_enabled: Optional[bool] = None  # None lets action-specific defaults apply
     character_id: Optional[str] = None             # built-in persona id (PERSONAS) — biases output voice
+    project_id: Optional[str] = None
+    crew_member_id: Optional[str] = None
 
 
 class TaskUpdate(BaseModel):
@@ -178,6 +180,8 @@ class TaskUpdate(BaseModel):
     then_task_id: Optional[str] = None
     notifications_enabled: Optional[bool] = None
     character_id: Optional[str] = None
+    project_id: Optional[str] = None
+    crew_member_id: Optional[str] = None
 
 
 def _display_task_name(t: ScheduledTask) -> str:
@@ -209,6 +213,7 @@ def _task_to_dict(t: ScheduledTask, include_last_run_result: bool = False) -> di
         "status": t.status,
         "output_target": t.output_target,
         "session_id": t.session_id,
+        "project_id": getattr(t, "project_id", None),
         "crew_member_id": getattr(t, "crew_member_id", None),
         "character_id": getattr(t, "character_id", None),
         "model": t.model,
@@ -244,6 +249,7 @@ def _run_to_dict(r: TaskRun) -> dict:
     return {
         "id": r.id,
         "task_id": r.task_id,
+        "project_id": getattr(r, "project_id", None),
         "started_at": r.started_at.isoformat() + "Z" if r.started_at else None,
         "finished_at": r.finished_at.isoformat() + "Z" if r.finished_at else None,
         "status": r.status,
@@ -301,6 +307,62 @@ def setup_task_routes(task_scheduler) -> APIRouter:
     def _owner(request: Request):
         return get_current_user(request)
 
+    def _project_for_task(db, user: Optional[str], project_id: Optional[str]):
+        project_value = str(project_id or "").strip()
+        if not project_value:
+            return None
+        from src.owner_identity import effective_storage_owner
+        from src.project_scope import get_owned_project
+
+        owner = effective_storage_owner(user)
+        if not owner:
+            raise HTTPException(401, "Authentication required")
+        return get_owned_project(db, owner, project_value)
+
+    def _project_task_defaults(db, user: Optional[str], project):
+        if project is None:
+            return None, None, None
+        settings = project.settings or {}
+        model = str(settings.get("default_model") or "").strip() or None
+        crew_id = str(settings.get("default_crew_member_id") or "").strip() or None
+        endpoint_url = None
+        endpoint_id = str(settings.get("default_endpoint_id") or "").strip()
+        if endpoint_id:
+            from core.database import ModelEndpoint
+            from src.auth_helpers import owner_filter
+            from src.endpoint_resolver import build_chat_url, normalize_base
+
+            query = db.query(ModelEndpoint).filter(
+                ModelEndpoint.id == endpoint_id,
+                ModelEndpoint.is_enabled == True,  # noqa: E712
+            )
+            if user:
+                query = owner_filter(query, ModelEndpoint, user)
+            endpoint = query.first()
+            if endpoint is not None:
+                endpoint_url = build_chat_url(normalize_base(endpoint.base_url))
+        return model, endpoint_url, crew_id
+
+    def _validate_project_crew(db, user: Optional[str], project, crew_id: Optional[str]):
+        value = str(crew_id or "").strip()
+        if not value:
+            return None
+        from core.database import CrewMember
+        from src.owner_identity import DEFAULT_LOCAL_OWNER
+
+        query = db.query(CrewMember).filter(CrewMember.id == value)
+        if user:
+            query = query.filter(CrewMember.owner == user)
+        else:
+            query = query.filter(
+                (CrewMember.owner == None) | (CrewMember.owner == DEFAULT_LOCAL_OWNER)  # noqa: E711
+            )
+        crew = query.first()
+        expected_project = project.id if project is not None else None
+        if crew is None or getattr(crew, "project_id", None) != expected_project:
+            raise HTTPException(404, "Project agent not found")
+        return crew.id
+
     async def _generate_task_name(prompt: str, owner: Optional[str] = None) -> str:
         """Use LLM to generate a short task name from the prompt."""
         try:
@@ -340,11 +402,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
 
     @router.get("")
     async def list_tasks(request: Request, status: Optional[str] = None,
-                         include_last_run: bool = False):
+                         include_last_run: bool = False,
+                         project_id: Optional[str] = None):
         user = _owner(request)
-        if user:
+        if user and not project_id:
             await task_scheduler.ensure_defaults(user)
-        else:
+        elif not user and not project_id:
             db_seed = SessionLocal()
             try:
                 owners = {
@@ -361,8 +424,17 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         db = SessionLocal()
         try:
             q = db.query(ScheduledTask)
+            project = _project_for_task(db, user, project_id)
             if user:
                 q = q.filter(ScheduledTask.owner == user)
+            if project is not None:
+                q = q.filter(ScheduledTask.project_id == project.id)
+                if not user:
+                    from src.owner_identity import DEFAULT_LOCAL_OWNER
+                    q = q.filter(
+                        (ScheduledTask.owner == None)  # noqa: E711
+                        | (ScheduledTask.owner == DEFAULT_LOCAL_OWNER)
+                    )
             if status:
                 q = q.filter(ScheduledTask.status == status)
             tasks = q.order_by(ScheduledTask.created_at.desc()).all()
@@ -510,6 +582,16 @@ def setup_task_routes(task_scheduler) -> APIRouter:
         task_id = str(uuid.uuid4())
         db = SessionLocal()
         try:
+            project = _project_for_task(db, user, req.project_id)
+            default_model, default_endpoint_url, default_crew_id = _project_task_defaults(
+                db, user, project
+            )
+            crew_member_id = _validate_project_crew(
+                db,
+                user,
+                project,
+                req.crew_member_id or default_crew_id,
+            )
             then_task_id = _validate_then_task_id(db, req.then_task_id, user)
             notifications_enabled = (
                 False if req.task_type == "action" and req.notifications_enabled is None
@@ -525,9 +607,14 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                     raise HTTPException(400, "Chained task not found")
                 if chain_target.owner != user:
                     raise HTTPException(403, "Cannot chain to another user's task")
+                if getattr(chain_target, "project_id", None) != (
+                    project.id if project is not None else None
+                ):
+                    raise HTTPException(400, "Chained tasks must use the same project")
             task = ScheduledTask(
                 id=task_id,
                 owner=user,
+                project_id=project.id if project is not None else None,
                 name=name,
                 prompt=req.prompt,
                 task_type=req.task_type,
@@ -544,12 +631,13 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 next_run=next_run,
                 status="active" if (req.trigger_type in ("event", "webhook") or next_run) else "completed",
                 output_target=req.output_target,
-                model=req.model or None,
-                endpoint_url=req.endpoint_url or None,
+                model=req.model or default_model,
+                endpoint_url=req.endpoint_url or default_endpoint_url,
                 then_task_id=then_task_id,
                 webhook_token=webhook_token,
                 notifications_enabled=notifications_enabled,
                 character_id=(req.character_id or None),
+                crew_member_id=crew_member_id,
             )
             db.add(task)
             db.commit()
@@ -678,6 +766,17 @@ def setup_task_routes(task_scheduler) -> APIRouter:
             next_action = req.action if req.action is not None else task.action
             _require_admin_for_task_action(user, next_task_type, next_action)
 
+            project = None
+            if "project_id" in req.model_fields_set:
+                project = _project_for_task(db, user, req.project_id)
+                task.project_id = project.id if project is not None else None
+            elif task.project_id:
+                project = _project_for_task(db, user, task.project_id)
+            if "crew_member_id" in req.model_fields_set:
+                task.crew_member_id = _validate_project_crew(
+                    db, user, project, req.crew_member_id
+                )
+
             if req.name is not None:
                 task.name = req.name
             if req.prompt is not None:
@@ -703,6 +802,12 @@ def setup_task_routes(task_scheduler) -> APIRouter:
                 task.trigger_count = req.trigger_count
             if req.then_task_id is not None:
                 task.then_task_id = _validate_then_task_id(db, req.then_task_id, user, current_task_id=task.id)
+                if task.then_task_id:
+                    chained = db.query(ScheduledTask).filter(
+                        ScheduledTask.id == task.then_task_id
+                    ).first()
+                    if chained and chained.project_id != task.project_id:
+                        raise HTTPException(400, "Chained tasks must use the same project")
             if req.notifications_enabled is not None:
                 task.notifications_enabled = bool(req.notifications_enabled)
             if req.character_id is not None:

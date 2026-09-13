@@ -1,7 +1,16 @@
 import Storage from './storage.js';
 
 const API_BASE = window.location.origin;
-const TABS = ['overview', 'conversations', 'files', 'settings'];
+const TABS = [
+  'overview',
+  'conversations',
+  'agents',
+  'tasks',
+  'files',
+  'memory',
+  'models',
+  'settings',
+];
 
 let pane = null;
 let projects = [];
@@ -234,6 +243,117 @@ async function renderConversations(panel) {
   sessions.forEach((session) => panel.appendChild(sessionRow(session)));
 }
 
+async function renderAgents(panel) {
+  const form = element('form', 'project-create-form');
+  const name = element('input');
+  name.placeholder = 'Agent name';
+  name.maxLength = 120;
+  name.required = true;
+  name.setAttribute('aria-label', 'Project agent name');
+  const create = element('button', 'project-action primary', 'Add agent');
+  create.type = 'submit';
+  form.append(name, create);
+  panel.appendChild(form);
+  const list = element('div');
+  panel.appendChild(list);
+
+  const load = async () => {
+    const agents = await request(`/api/projects/${currentProject.id}/agents`);
+    list.replaceChildren();
+    if (!agents.length) {
+      list.appendChild(element('div', 'project-empty', 'No project agents yet.'));
+      return;
+    }
+    agents.forEach((agent) => {
+      const row = element('div', 'project-session-row');
+      row.append(
+        element('span', '', agent.name),
+        element('span', 'project-muted', agent.model || 'Project default model'),
+        element('span', 'project-muted', agent.is_default ? 'Default' : ''),
+      );
+      list.appendChild(row);
+    });
+  };
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await request(`/api/projects/${currentProject.id}/agents`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name.value.trim(),
+          is_default: true,
+        }),
+      });
+      name.value = '';
+      await load();
+      showToast('Project agent created');
+    } catch (error) {
+      showError(error.message || 'Could not create project agent');
+    }
+  });
+  await load();
+}
+
+async function renderTasks(panel) {
+  const form = element('form', 'project-settings-form');
+  const name = element('input');
+  name.placeholder = 'Task name';
+  name.maxLength = 120;
+  name.setAttribute('aria-label', 'Project task name');
+  const prompt = element('textarea');
+  prompt.placeholder = 'What should the project agent do?';
+  prompt.rows = 3;
+  prompt.required = true;
+  prompt.setAttribute('aria-label', 'Project task prompt');
+  const create = element('button', 'project-action primary', 'Add daily task');
+  create.type = 'submit';
+  form.append(name, prompt, create);
+  panel.appendChild(form);
+  const list = element('div');
+  panel.appendChild(list);
+
+  const load = async () => {
+    const payload = await request(`/api/tasks?project_id=${encodeURIComponent(currentProject.id)}`);
+    list.replaceChildren();
+    if (!payload.tasks.length) {
+      list.appendChild(element('div', 'project-empty', 'No project tasks yet.'));
+      return;
+    }
+    payload.tasks.forEach((task) => {
+      const row = element('div', 'project-session-row');
+      row.append(
+        element('span', '', task.name || 'Untitled task'),
+        element('span', 'project-muted', `${task.status} · ${task.schedule || task.trigger_type}`),
+      );
+      list.appendChild(row);
+    });
+  };
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await request('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name.value.trim() || null,
+          prompt: prompt.value.trim(),
+          task_type: 'llm',
+          trigger_type: 'schedule',
+          schedule: 'daily',
+          scheduled_time: '09:00',
+          project_id: currentProject.id,
+        }),
+      });
+      name.value = '';
+      prompt.value = '';
+      await load();
+      showToast('Project task created');
+    } catch (error) {
+      showError(error.message || 'Could not create project task');
+    }
+  });
+  await load();
+}
+
 async function renderFiles(panel) {
   const payload = await request(`/api/projects/${currentProject.id}/files`);
   panel.appendChild(element('div', 'project-muted', payload.workspace));
@@ -251,6 +371,98 @@ async function renderFiles(panel) {
     panel.appendChild(row);
   });
   if (payload.truncated) panel.appendChild(element('div', 'project-muted', 'File list truncated.'));
+}
+
+async function renderMemory(panel) {
+  const form = element('form', 'project-create-form');
+  const text = element('input');
+  text.placeholder = 'Remember for this project';
+  text.maxLength = 5000;
+  text.required = true;
+  text.setAttribute('aria-label', 'Project memory');
+  const add = element('button', 'project-action primary', 'Remember');
+  add.type = 'submit';
+  form.append(text, add);
+  panel.appendChild(form);
+  const list = element('div');
+  panel.appendChild(list);
+
+  const load = async () => {
+    const payload = await request(`/api/memory?project_id=${encodeURIComponent(currentProject.id)}`);
+    list.replaceChildren();
+    list.appendChild(element('div', 'project-muted', `Policy: ${payload.memory_mode}`));
+    if (!payload.memory.length) {
+      list.appendChild(element('div', 'project-empty', 'No memories visible under this policy.'));
+      return;
+    }
+    payload.memory.forEach((memory) => {
+      const row = element('div', 'project-session-row');
+      row.append(
+        element('span', '', memory.text),
+        element('span', 'project-muted', memory.project_id ? 'Project' : 'Global'),
+      );
+      list.appendChild(row);
+    });
+  };
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await request('/api/memory/add', {
+        method: 'POST',
+        body: JSON.stringify({
+          text: text.value.trim(),
+          category: 'project',
+          source: 'user',
+          project_id: currentProject.id,
+        }),
+      });
+      text.value = '';
+      await load();
+      showToast('Project memory added');
+    } catch (error) {
+      showError(error.message || 'Could not add project memory');
+    }
+  });
+  await load();
+}
+
+async function renderModels(panel) {
+  const form = element('form', 'project-settings-form');
+  const endpoint = element('input');
+  endpoint.placeholder = 'Model endpoint ID (optional)';
+  endpoint.value = currentProject.settings?.default_endpoint_id || '';
+  endpoint.setAttribute('aria-label', 'Default model endpoint ID');
+  const model = element('input');
+  model.placeholder = 'Default model name';
+  model.value = currentProject.settings?.default_model || '';
+  model.setAttribute('aria-label', 'Default project model');
+  const save = element('button', 'project-action primary', 'Save model defaults');
+  save.type = 'submit';
+  form.append(
+    element('label', '', 'Endpoint ID'),
+    endpoint,
+    element('label', '', 'Model'),
+    model,
+    save,
+  );
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const settings = {
+        ...(currentProject.settings || {}),
+        default_endpoint_id: endpoint.value.trim(),
+        default_model: model.value.trim(),
+      };
+      currentProject = await request(`/api/projects/${currentProject.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ settings }),
+      });
+      showToast('Project model defaults saved');
+    } catch (error) {
+      showError(error.message || 'Could not save model defaults');
+    }
+  });
+  panel.appendChild(form);
 }
 
 async function renderSettings(panel) {
@@ -341,7 +553,11 @@ async function renderActivePanel() {
     panel.replaceChildren();
     if (currentTab === 'overview') await renderOverview(panel);
     if (currentTab === 'conversations') await renderConversations(panel);
+    if (currentTab === 'agents') await renderAgents(panel);
+    if (currentTab === 'tasks') await renderTasks(panel);
     if (currentTab === 'files') await renderFiles(panel);
+    if (currentTab === 'memory') await renderMemory(panel);
+    if (currentTab === 'models') await renderModels(panel);
     if (currentTab === 'settings') await renderSettings(panel);
   } catch (error) {
     panel.replaceChildren(element('div', 'project-empty', error.message || 'Could not load project section'));

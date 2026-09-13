@@ -20,6 +20,9 @@ def test_project_model_and_session_link_are_additive():
     assert project_table.c.owner.nullable is False
     assert session_table.c.project_id.nullable is True
     assert not session_table.c.project_id.foreign_keys
+    assert database.ScheduledTask.__table__.c.project_id.nullable is True
+    assert database.CrewMember.__table__.c.project_id.nullable is True
+    assert database.TaskRun.__table__.c.project_id.nullable is True
 
 
 def test_project_migration_preserves_existing_sessions(monkeypatch, tmp_path):
@@ -52,6 +55,39 @@ def test_project_migration_preserves_existing_sessions(monkeypatch, tmp_path):
     assert row == ("legacy", "alice", None)
     assert "ix_sessions_project_id" in indexes
     assert "ix_sessions_owner_project" in indexes
+
+
+def test_project_integration_migration_is_idempotent(monkeypatch, tmp_path):
+    db_path = tmp_path / "integrations.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            "CREATE TABLE scheduled_tasks (id TEXT PRIMARY KEY, owner TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE task_runs (id TEXT PRIMARY KEY, task_id TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE crew_members (id TEXT PRIMARY KEY, owner TEXT)"
+        )
+    test_engine = create_engine(f"sqlite:///{db_path}")
+    monkeypatch.setattr(database, "engine", test_engine)
+
+    database._migrate_project_integrations()
+    database._migrate_project_integrations()
+
+    with sqlite3.connect(db_path) as connection:
+        task_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(scheduled_tasks)")
+        }
+        run_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(task_runs)")
+        }
+        crew_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(crew_members)")
+        }
+    assert "project_id" in task_columns
+    assert "project_id" in run_columns
+    assert {"project_id", "is_project_default"} <= crew_columns
 
 
 def test_project_scope_is_strictly_owner_scoped():

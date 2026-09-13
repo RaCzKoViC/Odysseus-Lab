@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import inspect
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -19,6 +20,7 @@ class MemoryRecord:
     owner: Optional[str] = None
     session_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    project_id: Optional[str] = None
 
 
 @dataclass
@@ -55,6 +57,7 @@ class MemoryProvider(ABC):
         *,
         owner: Optional[str] = None,
         session_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         category: str = "fact",
         source: str = "user",
         metadata: Optional[Dict[str, Any]] = None,
@@ -67,6 +70,8 @@ class MemoryProvider(ABC):
         query: str,
         *,
         owner: Optional[str] = None,
+        project_id: Optional[str] = None,
+        memory_mode: str = "inherit",
         top_k: int = 5,
     ) -> List[MemorySearchHit]:
         """Return provider memories relevant to the query."""
@@ -76,6 +81,8 @@ class MemoryProvider(ABC):
         self,
         *,
         owner: Optional[str] = None,
+        project_id: Optional[str] = None,
+        memory_mode: str = "inherit",
         limit: int = 100,
     ) -> List[MemoryRecord]:
         """List memories visible to the owner."""
@@ -108,6 +115,7 @@ class NativeMemoryProvider(MemoryProvider):
         "uses",
         "owner",
         "session_id",
+        "project_id",
         "metadata",
     }
 
@@ -134,6 +142,7 @@ class NativeMemoryProvider(MemoryProvider):
             owner=entry.get("owner"),
             session_id=entry.get("session_id"),
             metadata=metadata,
+            project_id=entry.get("project_id"),
         )
 
     async def remember(
@@ -142,6 +151,7 @@ class NativeMemoryProvider(MemoryProvider):
         *,
         owner: Optional[str] = None,
         session_id: Optional[str] = None,
+        project_id: Optional[str] = None,
         category: str = "fact",
         source: str = "user",
         metadata: Optional[Dict[str, Any]] = None,
@@ -151,6 +161,7 @@ class NativeMemoryProvider(MemoryProvider):
             source=source,
             category=category,
             owner=owner,
+            project_id=project_id,
         )
         if session_id:
             entry["session_id"] = session_id
@@ -166,7 +177,18 @@ class NativeMemoryProvider(MemoryProvider):
         self.memory_manager.save(memories)
 
         if self._vector_available():
-            self.memory_vector.add(entry["id"], entry["text"])
+            add_parameters = inspect.signature(self.memory_vector.add).parameters
+            if "owner" in add_parameters:
+                self.memory_vector.add(
+                    entry["id"],
+                    entry["text"],
+                    owner=owner,
+                    project_id=project_id,
+                )
+            else:
+                # External/legacy vector adapters keep the historical
+                # two-argument protocol.
+                self.memory_vector.add(entry["id"], entry["text"])
 
         return self._to_record(entry)
 
@@ -175,9 +197,15 @@ class NativeMemoryProvider(MemoryProvider):
         query: str,
         *,
         owner: Optional[str] = None,
+        project_id: Optional[str] = None,
+        memory_mode: str = "inherit",
         top_k: int = 5,
     ) -> List[MemorySearchHit]:
-        memories = self.memory_manager.load(owner=owner)
+        memories = self.memory_manager.load(
+            owner=owner,
+            project_id=project_id,
+            mode=memory_mode,
+        )
         by_id = {m.get("id"): m for m in memories}
 
         if self._vector_available():
@@ -219,11 +247,17 @@ class NativeMemoryProvider(MemoryProvider):
         self,
         *,
         owner: Optional[str] = None,
+        project_id: Optional[str] = None,
+        memory_mode: str = "inherit",
         limit: int = 100,
     ) -> List[MemoryRecord]:
         return [
             self._to_record(entry)
-            for entry in self.memory_manager.load(owner=owner)[:limit]
+            for entry in self.memory_manager.load(
+                owner=owner,
+                project_id=project_id,
+                mode=memory_mode,
+            )[:limit]
         ]
 
     async def delete(self, memory_id: str, *, owner: Optional[str] = None) -> bool:

@@ -395,6 +395,27 @@ def setup_session_routes(
     ):
         skip_val = str(skip_validation).lower() == "true"
         user = effective_user(request)
+        endpoint_id = _optional_text(endpoint_id)
+        project_id_value = _optional_text(project_id)
+        normalized_project_id = None
+        if project_id_value:
+            from src.owner_identity import effective_storage_owner
+            from src.project_scope import get_owned_project
+
+            project_owner = effective_storage_owner(user)
+            if not project_owner:
+                raise HTTPException(401, "Authentication required")
+            project_db = SessionLocal()
+            try:
+                project = get_owned_project(project_db, project_owner, project_id_value)
+                normalized_project_id = project.id
+                settings = project.settings or {}
+                if not endpoint_id:
+                    endpoint_id = str(settings.get("default_endpoint_id") or "").strip()
+                if not model:
+                    model = str(settings.get("default_model") or "").strip()
+            finally:
+                project_db.close()
         _reject_delegated_session_options(
             request,
             skip_validation=skip_val,
@@ -485,20 +506,6 @@ def setup_session_routes(
         
         sid = str(uuid.uuid4())
         user = effective_user(request)
-        normalized_project_id = None
-        project_id_value = _optional_text(project_id)
-        if project_id_value:
-            from src.owner_identity import effective_storage_owner
-            from src.project_scope import get_owned_project
-            project_owner = effective_storage_owner(user)
-            if not project_owner:
-                raise HTTPException(401, "Authentication required")
-            project_db = SessionLocal()
-            try:
-                project = get_owned_project(project_db, project_owner, project_id_value)
-                normalized_project_id = project.id
-            finally:
-                project_db.close()
         session = session_manager.create_session(
             session_id=sid,
             name=name or "",

@@ -159,3 +159,36 @@ def test_project_files_skip_hidden_entries_and_symlinks(monkeypatch, tmp_path):
 
     payload = client.get(f"/api/projects/{project['id']}/files").json()
     assert [entry["path"] for entry in payload["entries"]] == ["visible.txt"]
+
+
+def test_project_agents_are_scoped_and_can_be_default(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"name": "Agents"}).json()
+
+    created = client.post(
+        f"/api/projects/{project['id']}/agents",
+        json={
+            "name": "Developer",
+            "personality": "Build and test carefully.",
+            "model": "qwen-coder",
+            "enabled_tools": ["read_file", "write_file"],
+            "is_default": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent = created.json()
+    assert agent["project_id"] == project["id"]
+    assert agent["is_default"] is True
+    assert agent["enabled_tools"] == ["read_file", "write_file"]
+
+    project_after = client.get(f"/api/projects/{project['id']}").json()
+    assert project_after["settings"]["default_crew_member_id"] == agent["id"]
+    assert client.get(
+        f"/api/projects/{project['id']}/agents",
+        headers={"x-test-user": "bob"},
+    ).status_code == 404
+
+    deleted = client.delete(f"/api/projects/{project['id']}/agents/{agent['id']}")
+    assert deleted.status_code == 200
+    project_after = client.get(f"/api/projects/{project['id']}").json()
+    assert "default_crew_member_id" not in project_after["settings"]

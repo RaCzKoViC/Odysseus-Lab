@@ -74,3 +74,34 @@ def apply_project_scope(
     except ValueError:
         raise HTTPException(status_code=404, detail="Project not found")
     return query.filter(model_cls.project_id == normalized)
+
+
+def resolve_project_memory_scope(
+    owner: Optional[str],
+    project_id: Optional[str],
+) -> tuple[Optional[str], str]:
+    """Return canonical project id and its validated memory visibility mode."""
+    if not project_id:
+        return None, "inherit"
+    from core.database import SessionLocal
+
+    storage = effective_storage_owner(owner)
+    if not storage:
+        return None, "inherit"
+    db = SessionLocal()
+    try:
+        try:
+            project = get_owned_project(
+                db,
+                storage,
+                project_id,
+                include_archived=True,
+            )
+        except HTTPException:
+            return None, "inherit"
+        mode = str((project.settings or {}).get("memory_mode") or "inherit")
+        if mode not in {"inherit", "project_only", "project_plus_global"}:
+            mode = "inherit"
+        return project.id, mode
+    finally:
+        db.close()

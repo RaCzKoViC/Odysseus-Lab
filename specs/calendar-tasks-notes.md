@@ -76,6 +76,13 @@ Task runtime behavior:
 
 `routes.assistant_routes.py` owns crew/assistant settings and run-status surfaces that use the scheduler. `TaskScheduler.ensure_assistant_defaults()` currently seeds the personal assistant crew member and pinned assistant session, but no longer auto-creates Morning/Midday/Evening check-in tasks. Existing crew-linked check-in tasks are still rendered and managed when present.
 
+Lab Project integration adds nullable `project_id` to `ScheduledTask`,
+`TaskRun`, and `CrewMember`. Project task creation validates the project and
+default crew member against the current owner, inherits project model defaults
+when request fields are absent, and requires chained tasks to remain in the
+same project. Scheduler-created output sessions and run telemetry carry the
+task's project id. Personal-assistant crew rows remain project-null.
+
 ## Notes And Reminders
 
 `routes.note.note_routes` owns notes/todos/reminders, and `app.py` imports that
