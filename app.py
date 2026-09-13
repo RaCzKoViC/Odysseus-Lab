@@ -810,7 +810,7 @@ from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
 
 from routes.project import setup_project_routes
-app.include_router(setup_project_routes())
+app.include_router(setup_project_routes(memory_manager, memory_vector))
 
 # Hardware model fitting (cookbook "What Fits?" tab)
 from routes.hwfit_routes import setup_hwfit_routes

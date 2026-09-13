@@ -7,6 +7,7 @@ layout under ``DATA_DIR/projects/<uuid>/workspace`` and never follows symlinks.
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import uuid
 from pathlib import Path
@@ -78,6 +79,14 @@ def cleanup_empty_project_root(project_id: str) -> None:
             root.rmdir()
     except (OSError, RuntimeError, ValueError):
         return
+
+
+def remove_project_root(project_id: str) -> None:
+    """Remove a newly-created import target after a failed transaction."""
+    root = project_root(project_id)
+    if root.is_symlink() or root.resolve().parent != ensure_projects_root().resolve():
+        raise RuntimeError("project root escaped its managed directory")
+    shutil.rmtree(root)
 
 
 def list_project_workspace(project_id: str) -> list[dict[str, Any]]:

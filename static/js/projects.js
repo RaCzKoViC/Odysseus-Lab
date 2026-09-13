@@ -64,6 +64,10 @@ function ensurePane() {
           <input id="project-create-name" maxlength="120" placeholder="New project name" aria-label="New project name" required>
           <button class="project-action primary" type="submit">Create</button>
         </form>
+        <div class="project-settings-actions">
+          <button type="button" class="project-action" id="project-import-button">Import project</button>
+          <input type="file" id="project-import-file" accept="application/json,.json" hidden>
+        </div>
         <div id="project-list-items" class="project-list-items" aria-live="polite"></div>
       </aside>
       <main class="project-workspace" id="project-workspace">
@@ -76,6 +80,10 @@ function ensurePane() {
   document.body.appendChild(pane);
   pane.querySelector('#project-pane-close').addEventListener('click', closeProjects);
   pane.querySelector('#project-create-form').addEventListener('submit', createProject);
+  pane.querySelector('#project-import-button').addEventListener('click', () => {
+    pane.querySelector('#project-import-file').click();
+  });
+  pane.querySelector('#project-import-file').addEventListener('change', importProject);
   pane.querySelectorAll('[data-project-tab]').forEach((button) => {
     button.addEventListener('click', () => activateTab(button.dataset.projectTab));
   });
@@ -160,6 +168,26 @@ async function createProject(event) {
   }
 }
 
+async function importProject(event) {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    if (file.size > 20 * 1024 * 1024) throw new Error('Project bundle exceeds 20 MB');
+    const bundle = JSON.parse(await file.text());
+    const payload = await request('/api/projects/import', {
+      method: 'POST',
+      body: JSON.stringify(bundle),
+    });
+    projects.unshift(payload.project);
+    await selectProject(payload.project.id);
+    showToast('Project imported');
+  } catch (error) {
+    showError(error.message || 'Could not import project');
+  }
+}
+
 async function selectProject(projectId, { updateUrl = true } = {}) {
   try {
     currentProject = await request(`/api/projects/${encodeURIComponent(projectId)}`);
@@ -182,9 +210,14 @@ function card(label, value) {
 
 async function renderOverview(panel) {
   const payload = await request(`/api/projects/${currentProject.id}/overview`);
+  const metrics = payload.metrics || {};
   const grid = element('div', 'project-grid');
   grid.append(
-    card('Conversations', payload.project.session_count || 0),
+    card('Conversations', metrics.sessions ?? payload.project.session_count ?? 0),
+    card('Agents', metrics.agents || 0),
+    card('Active tasks', metrics.active_tasks || 0),
+    card('Memories', metrics.memories || 0),
+    card('Tokens', (metrics.input_tokens || 0) + (metrics.output_tokens || 0) + (metrics.task_tokens || 0)),
     card('Status', payload.project.status),
     card('Workspace', 'Managed'),
   );
@@ -388,7 +421,7 @@ async function renderMemory(panel) {
   panel.appendChild(list);
 
   const load = async () => {
-    const payload = await request(`/api/memory?project_id=${encodeURIComponent(currentProject.id)}`);
+    const payload = await request(`/api/memory?project_id=${encodeURIComponent(currentProject.id)}&owned_only=true`);
     list.replaceChildren();
     list.appendChild(element('div', 'project-muted', `Policy: ${payload.memory_mode}`));
     if (!payload.memory.length) {
@@ -492,9 +525,11 @@ async function renderSettings(panel) {
   const actions = element('div', 'project-settings-actions');
   const save = element('button', 'project-action primary', 'Save');
   save.type = 'submit';
+  const exportButton = element('button', 'project-action', 'Export');
+  exportButton.type = 'button';
   const archive = element('button', 'project-action danger', 'Archive');
   archive.type = 'button';
-  actions.append(save, archive);
+  actions.append(save, exportButton, archive);
   form.append(
     element('label', '', 'Name'),
     name,
@@ -521,6 +556,25 @@ async function renderSettings(panel) {
       showToast('Project saved');
     } catch (error) {
       showError(error.message || 'Could not save project');
+    }
+  });
+  exportButton.addEventListener('click', async () => {
+    try {
+      const bundle = await request(`/api/projects/${currentProject.id}/export`);
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = element('a');
+      link.href = url;
+      link.download = `odysseus-project-${currentProject.id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast('Project exported');
+    } catch (error) {
+      showError(error.message || 'Could not export project');
     }
   });
   archive.addEventListener('click', async () => {

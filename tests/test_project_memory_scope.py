@@ -1,6 +1,16 @@
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+import uuid
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+import core.database as database
+import routes.memory.memory_routes as memory_routes
 from src.memory import MemoryManager
 from src.memory_provider import NativeMemoryProvider
 from src.memory_vector import MemoryVectorStore
@@ -83,3 +93,55 @@ def test_native_provider_round_trips_project_scope(tmp_path):
     )
     assert record.project_id == "project-a"
     assert [item.text for item in listed] == ["project fact"]
+
+
+def test_project_memory_management_view_is_owned_only(monkeypatch):
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    database.Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+    project_id = str(uuid.uuid4())
+    db = TestSession()
+    try:
+        db.add(
+            database.Project(
+                id=project_id,
+                owner="alice",
+                name="App",
+                default_workspace_path=f"projects/{project_id}/workspace",
+                settings={"memory_mode": "inherit"},
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    manager = MagicMock()
+    manager.load.return_value = [
+        {"id": "one", "text": "project fact", "project_id": project_id}
+    ]
+    monkeypatch.setattr(memory_routes, "SessionLocal", TestSession)
+    monkeypatch.setattr(memory_routes, "get_current_user", lambda request: "alice")
+    app = FastAPI()
+    app.include_router(
+        memory_routes.setup_memory_routes(
+            manager,
+            MagicMock(),
+            memory_vector=None,
+        )
+    )
+
+    response = TestClient(app).get(
+        f"/api/memory?project_id={project_id}&owned_only=true"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["memory_mode"] == "inherit"
+    assert response.json()["view"] == "project_owned"
+    manager.load.assert_called_once_with(
+        owner="alice",
+        project_id=project_id,
+        mode="project_only",
+    )

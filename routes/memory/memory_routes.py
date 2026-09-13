@@ -197,18 +197,24 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         }
 
     @router.get("")
-    def api_get_memory(request: Request, project_id: Optional[str] = None):
+    def api_get_memory(
+        request: Request,
+        project_id: Optional[str] = None,
+        owned_only: bool = False,
+    ):
         """Return all memory entries with their metadata."""
         user = _owner(request)
         project_id, memory_mode = _project_scope(user, project_id)
+        load_mode = "project_only" if project_id and owned_only else memory_mode
         return {
             "memory": memory_manager.load(
                 owner=user,
                 project_id=project_id,
-                mode=memory_mode,
+                mode=load_mode,
             ),
             "project_id": project_id,
             "memory_mode": memory_mode,
+            "view": "project_owned" if project_id and owned_only else "effective",
         }
 
     @router.post("/search")

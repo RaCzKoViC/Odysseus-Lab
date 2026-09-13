@@ -42,7 +42,11 @@ def test_project_ui_uses_text_content_for_server_values():
     assert "innerHTML = currentProject" not in source
     assert "/api/tasks?project_id=" in source
     assert "/api/memory?project_id=" in source
+    assert "owned_only=true" in source
     assert "/agents" in source
+    assert "/api/projects/import" in source
+    assert "/export" in source
+    assert "metrics.active_tasks" in source
 
 
 def test_project_css_has_mobile_touch_layout():
