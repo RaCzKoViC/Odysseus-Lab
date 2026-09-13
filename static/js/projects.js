@@ -421,7 +421,7 @@ async function renderMemory(panel) {
   panel.appendChild(list);
 
   const load = async () => {
-    const payload = await request(`/api/memory?project_id=${encodeURIComponent(currentProject.id)}`);
+    const payload = await request(`/api/memory?project_id=${encodeURIComponent(currentProject.id)}&owned_only=true`);
     list.replaceChildren();
     list.appendChild(element('div', 'project-muted', `Policy: ${payload.memory_mode}`));
     if (!payload.memory.length) {
