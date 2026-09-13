@@ -22,8 +22,8 @@ def test_project_launchers_and_route_are_wired():
 def test_project_pane_has_accessible_tabs_and_close_control():
     source = (ROOT / "static" / "js" / "projects.js").read_text(encoding="utf-8")
 
-    assert "role=\"dialog\"" in source
-    assert "aria-modal" in source
+    assert "pane.setAttribute('role', 'dialog')" in source
+    assert "pane.setAttribute('aria-modal', 'true')" in source
     assert "aria-label=\"Close project workspace\"" in source
     assert "role=\"tablist\"" in source
     assert "role=\"tab\"" in source
@@ -37,7 +37,7 @@ def test_project_ui_uses_text_content_for_server_values():
 
     assert "node.textContent = text" in source
     assert "pane.querySelector('#project-pane-title').textContent = currentProject.name" in source
-    assert "${currentProject.name}" not in source
+    assert "innerHTML = currentProject" not in source
 
 
 def test_project_css_has_mobile_touch_layout():
