@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY docker/build-realesrgan-wheels.sh /usr/local/bin/build-realesrgan-wheels.sh
 RUN bash /usr/local/bin/build-realesrgan-wheels.sh /wheels
 
-FROM python:3.14-slim
+FROM python:3.14-slim AS runtime-base
 
 # System deps. tmux is required by Cookbook for background downloads/serves.
 # openssh-client is required for Cookbook remote server tests, setup, probes,
@@ -84,15 +84,6 @@ RUN pip install --no-cache-dir -r requirements.txt -c constraints/py314.txt \
 # lib installed above; see the apt note near the top of this stage.
 RUN pip install --no-cache-dir python-magic==0.4.27
 
-# Pre-install the patched basicsr/gfpgan/facexlib wheels built in the
-# realesrgan-wheels stage (--no-deps keeps the image lean — torch & friends are
-# pulled only when realesrgan is actually installed). With these dists already
-# satisfied, the Cookbook's plain `pip install realesrgan` resolves them from
-# wheels instead of rebuilding the sdists that fail on Python 3.14.
-COPY --from=realesrgan-wheels /wheels/ /tmp/odysseus-wheels/
-RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
-    && rm -rf /tmp/odysseus-wheels
-
 # Copy app code
 COPY . .
 
@@ -109,6 +100,20 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 7000
+
+FROM runtime-base AS foundation-runtime
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]
+
+# The default production target includes patched Real-ESRGAN dependencies.
+# CI's foundation-runtime target intentionally skips only these optional image
+# wheels so a readiness smoke test fits on the standard GitHub runner disk.
+FROM runtime-base AS production
+
+COPY --from=realesrgan-wheels /wheels/ /tmp/odysseus-wheels/
+RUN pip install --no-cache-dir --no-deps /tmp/odysseus-wheels/*.whl \
+    && rm -rf /tmp/odysseus-wheels
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"]

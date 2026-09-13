@@ -32,3 +32,16 @@ def test_application_healthcheck_uses_readiness(path):
     assert "healthcheck:" in service
     assert "http://127.0.0.1:7000/api/ready" in service
     assert "start_period: 45s" in service
+
+
+def test_ci_smoke_target_skips_only_optional_image_wheels():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    overlay = (ROOT / "docker" / "foundation-smoke.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "FROM runtime-base AS foundation-runtime" in dockerfile
+    assert "FROM runtime-base AS production" in dockerfile
+    production = dockerfile.split("FROM runtime-base AS production", 1)[1]
+    assert "COPY --from=realesrgan-wheels" in production
+    assert "target: foundation-runtime" in overlay
+    assert "docker-compose.yml:docker/foundation-smoke.yml" in workflow
