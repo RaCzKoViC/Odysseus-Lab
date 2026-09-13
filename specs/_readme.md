@@ -46,6 +46,7 @@ project documentation.
 - [runtime.md](runtime.md): FastAPI startup, router registration, static serving, lifespan, app-wide middleware.
 - [auth-security.md](auth-security.md): auth, privileges, API tokens, security headers, untrusted data, SSRF and admin boundaries.
 - [persistence.md](persistence.md): SQLite models, startup migrations, encrypted columns, ownership columns, data directory rules.
+- [projects.md](projects.md): Lab Project entity, owner isolation, managed workspaces, session linkage, and additive API.
 - [chat.md](chat.md): chat routes, sessions, streaming, uploads-in-chat, compare handoff, research/chat mode dispatch.
 - [compare.md](compare.md): model A/B comparison runs, voting/history, compare frontend panes, compare ownership.
 - [llm-models.md](llm-models.md): LLM provider calls, endpoint discovery, model context length, fallbacks, model endpoints.

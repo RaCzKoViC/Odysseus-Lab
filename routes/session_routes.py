@@ -31,6 +31,11 @@ def _sanitize_export_filename(name: str) -> str:
     return name[:128]
 
 
+def _optional_text(value) -> str:
+    """Normalize optional request values without trusting direct-call mocks."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 # Blind-compare helper sessions are created with this name prefix. Their real
 # model must never surface in the session list / sidebar — otherwise a blind
 # comparison can be de-anonymized before the user votes (issue #1285).
@@ -250,6 +255,9 @@ def setup_session_routes(
     @router.get("/sessions")
     def list_sessions(request: Request):
         user = effective_user(request)
+        project_filter_value = _optional_text(
+            request.query_params.get("project_id")
+        )
         active_incognito_id = str(request.query_params.get("active_incognito_id") or "").strip()
         # Lazy purge: incognito sessions are ephemeral by design — wipe leftovers
         # from the DB and session_manager so they vanish on the next page refresh.
@@ -298,8 +306,22 @@ def setup_session_routes(
             last_msg_map = {}
             mode_map = {}
             msg_count_map = {}
-            q = db.query(DbSession.id, DbSession.folder, DbSession.total_input_tokens, DbSession.total_output_tokens, DbSession.is_important, DbSession.created_at, DbSession.updated_at, DbSession.last_message_at, DbSession.mode, DbSession.message_count).filter(DbSession.archived == False)
+            project_map = {}
+            q = db.query(DbSession.id, DbSession.folder, DbSession.total_input_tokens, DbSession.total_output_tokens, DbSession.is_important, DbSession.created_at, DbSession.updated_at, DbSession.last_message_at, DbSession.mode, DbSession.message_count, DbSession.project_id).filter(DbSession.archived == False)
             q = owner_filter(q, DbSession, user)
+            if project_filter_value:
+                if user:
+                    q = q.filter(DbSession.owner == user)
+                if project_filter_value == "unassigned":
+                    q = q.filter(DbSession.project_id == None)  # noqa: E711
+                else:
+                    from src.owner_identity import effective_storage_owner
+                    from src.project_scope import get_owned_project
+                    project_owner = effective_storage_owner(user)
+                    if not project_owner:
+                        raise HTTPException(401, "Authentication required")
+                    get_owned_project(db, project_owner, project_filter_value, include_archived=True)
+                    q = q.filter(DbSession.project_id == project_filter_value)
             rows = q.all()
             for row in rows:
                 folder_map[row.id] = row.folder
@@ -316,6 +338,7 @@ def setup_session_routes(
                 )
                 mode_map[row.id] = row.mode
                 msg_count_map[row.id] = row.message_count or 0
+                project_map[row.id] = row.project_id
             # Sessions with active documents that have content
             from sqlalchemy import func
             doc_session_ids = set(
@@ -348,9 +371,11 @@ def setup_session_routes(
                      "has_documents": s.id in doc_session_ids,
                      "has_images": s.id in img_session_ids,
                      "mode": mode_map.get(s.id),
-                     "message_count": msg_count_map.get(s.id, 0)}
+                     "message_count": msg_count_map.get(s.id, 0),
+                     "project_id": project_map.get(s.id)}
                     for s in user_sessions.values()
                     if not s.archived
+                    and (not project_filter_value or s.id in project_map)
                     and (s.name or "").strip() not in ("Nobody", "Incognito")
                     and (s.name or "").strip() not in _HIDDEN_SYSTEM_SESSION_NAMES]
 
@@ -366,6 +391,7 @@ def setup_session_routes(
         skip_validation: str = Form(None),
         api_key: str = Form(""),
         endpoint_id: str = Form(""),
+        project_id: str = Form(""),
     ):
         skip_val = str(skip_validation).lower() == "true"
         user = effective_user(request)
@@ -459,6 +485,20 @@ def setup_session_routes(
         
         sid = str(uuid.uuid4())
         user = effective_user(request)
+        normalized_project_id = None
+        project_id_value = _optional_text(project_id)
+        if project_id_value:
+            from src.owner_identity import effective_storage_owner
+            from src.project_scope import get_owned_project
+            project_owner = effective_storage_owner(user)
+            if not project_owner:
+                raise HTTPException(401, "Authentication required")
+            project_db = SessionLocal()
+            try:
+                project = get_owned_project(project_db, project_owner, project_id_value)
+                normalized_project_id = project.id
+            finally:
+                project_db.close()
         session = session_manager.create_session(
             session_id=sid,
             name=name or "",
@@ -466,6 +506,7 @@ def setup_session_routes(
             model=model_to_use,
             rag=str(rag).lower() == "true" if rag else False,
             owner=user,
+            project_id=normalized_project_id,
         )
         # Set auth headers for custom API-key endpoints
         resolved_key = request_api_key
@@ -490,7 +531,8 @@ def setup_session_routes(
             name=session.name,
             model=model_to_use,
             rag=str(rag).lower() == "true" if rag else False,
-            archived=False
+            archived=False,
+            project_id=normalized_project_id,
         )    
     @router.patch("/session/{sid}")
     def rename_session(
@@ -942,7 +984,8 @@ def setup_session_routes(
         request: Request,
         name: str = Form("New Chat (OpenAI)"),
         model: str = Form("gpt-4o"),
-        rag: str = Form(None)
+        rag: str = Form(None),
+        project_id: str = Form(""),
     ):
         if is_delegated_credential(request):
             raise HTTPException(403, "This session type requires an interactive session")
@@ -950,6 +993,21 @@ def setup_session_routes(
             raise HTTPException(400, "Server missing OPENAI_API_KEY")
         sid = str(uuid.uuid4())
         user = effective_user(request)
+        normalized_project_id = None
+        project_id_value = _optional_text(project_id)
+        if project_id_value:
+            from src.owner_identity import effective_storage_owner
+            from src.project_scope import get_owned_project
+            project_owner = effective_storage_owner(user)
+            if not project_owner:
+                raise HTTPException(401, "Authentication required")
+            project_db = SessionLocal()
+            try:
+                normalized_project_id = get_owned_project(
+                    project_db, project_owner, project_id_value
+                ).id
+            finally:
+                project_db.close()
         session = session_manager.create_session(
             session_id=sid,
             name="",
@@ -957,12 +1015,18 @@ def setup_session_routes(
             model=model,
             rag=str(rag).lower() == "true",
             owner=user,
+            project_id=normalized_project_id,
         )
         session.headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
         session_manager.save_sessions()
         from src.event_bus import fire_event
         fire_event("session_created", user)
-        return {"id": sid, "name": "", "model": model}
+        return {
+            "id": sid,
+            "name": "",
+            "model": model,
+            "project_id": normalized_project_id,
+        }
     
     @router.post("/session/{session_id}/important")
     async def mark_session_important(request: Request, session_id: str, important: bool = Form(True)):

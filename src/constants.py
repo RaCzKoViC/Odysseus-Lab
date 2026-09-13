@@ -5,7 +5,7 @@ import os
 from src.runtime_paths import get_app_root, get_default_data_dir
 
 PRODUCT_NAME = "Odysseus-Lab"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 APP_DISTRIBUTION = "lab"
 REPOSITORY_URL = "https://github.com/RaCzKoViC/Odysseus-Lab"
 UPSTREAM_NAME = "Odysseus"
@@ -59,6 +59,7 @@ SKILLS_DIR = os.path.join(DATA_DIR, "skills")
 GALLERY_DIR = os.path.join(DATA_DIR, "gallery")
 GALLERY_UPLOADS_DIR = os.path.join(DATA_DIR, "gallery_uploads")
 MEMORY_VECTORS_DIR = os.path.join(DATA_DIR, "memory_vectors")
+PROJECTS_DIR = os.path.join(DATA_DIR, "projects")
 
 # The only part of DATA_DIR the agent's file tools and subprocesses may touch.
 # Everything else under DATA_DIR is application state (session store, auth

@@ -16,6 +16,7 @@ from sqlalchemy.pool import NullPool
 
 import core.database as cdb
 from core.database import ChatMessage as DbMessage
+from core.database import Project as DbProject
 from core.database import Session as DbSession
 
 _TMPDB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -74,6 +75,88 @@ def test_list_sessions_excludes_other_users_sessions(monkeypatch):
     returned_ids = {s["id"] for s in result}
     assert alice_id in returned_ids
     assert bob_id not in returned_ids
+
+
+def test_list_sessions_filters_by_owned_project(monkeypatch):
+    import routes.session_routes as sr
+    from unittest.mock import MagicMock
+    from types import SimpleNamespace
+
+    _stub_multipart_if_missing(monkeypatch)
+    monkeypatch.setattr(sr, "SessionLocal", _TS)
+    monkeypatch.setattr(sr, "effective_user", lambda request: "alice")
+
+    project_id = str(uuid.uuid4())
+    other_project_id = str(uuid.uuid4())
+    included_id = str(uuid.uuid4())
+    excluded_id = str(uuid.uuid4())
+    db = _TS()
+    try:
+        db.query(DbMessage).delete()
+        db.query(DbSession).delete()
+        db.query(DbProject).delete()
+        db.add_all([
+            DbProject(
+                id=project_id,
+                owner="alice",
+                name="Alice project",
+                default_workspace_path=f"projects/{project_id}/workspace",
+            ),
+            DbProject(
+                id=other_project_id,
+                owner="alice",
+                name="Other project",
+                default_workspace_path=f"projects/{other_project_id}/workspace",
+            ),
+            DbSession(
+                id=included_id,
+                project_id=project_id,
+                owner="alice",
+                name="included",
+                endpoint_url="http://localhost",
+                model="gpt-4",
+                archived=False,
+            ),
+            DbSession(
+                id=excluded_id,
+                project_id=other_project_id,
+                owner="alice",
+                name="excluded",
+                endpoint_url="http://localhost",
+                model="gpt-4",
+                archived=False,
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    sm = MagicMock()
+    sm.get_sessions_for_user.return_value = {
+        included_id: SimpleNamespace(
+            id=included_id, name="included", model="gpt-4",
+            endpoint_url="http://localhost", rag=False, archived=False,
+        ),
+        excluded_id: SimpleNamespace(
+            id=excluded_id, name="excluded", model="gpt-4",
+            endpoint_url="http://localhost", rag=False, archived=False,
+        ),
+    }
+    request = MagicMock()
+    request.query_params.get.side_effect = lambda key: (
+        project_id if key == "project_id" else ""
+    )
+    router = sr.setup_session_routes(sm, {})
+    endpoint = [
+        route.endpoint for route in router.routes
+        if getattr(route, "path", "") == "/api/sessions"
+        and "GET" in getattr(route, "methods", set())
+    ][-1]
+
+    result = endpoint(request=request)
+
+    assert [item["id"] for item in result] == [included_id]
+    assert result[0]["project_id"] == project_id
 
 
 def test_auto_sort_skip_llm_cleans_owner_stamped_sessions_when_auth_disabled(monkeypatch):

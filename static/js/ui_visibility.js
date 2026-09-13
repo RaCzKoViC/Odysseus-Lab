@@ -26,6 +26,7 @@ export const UI_VIS_MAP = {
   'tool-library':        '#tool-library-btn, #rail-archive',
   'tool-memory':         '#tool-memory-btn, #rail-memory',
   'tool-notes':          '#tool-notes-btn, #rail-notes',
+  'tool-projects':       '#tool-projects-btn, #rail-projects',
   'tool-tasks':          '#tool-tasks-btn, #rail-tasks',
   'tool-theme':          '#tool-theme-btn, #rail-theme',
   'user-bar':            '#user-bar-profile',
