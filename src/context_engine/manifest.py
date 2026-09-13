@@ -58,7 +58,7 @@ def _token_estimate(content: Any, role: str = "user") -> int:
 def _safe_label(row: Any, fallback: str) -> str:
     if not isinstance(row, dict):
         return fallback
-    for key in ("title", "name", "filename", "label", "text", "url"):
+    for key in ("title", "name", "filename", "label"):
         value = row.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()[:160]
@@ -84,7 +84,11 @@ def _metadata_items(
         if not isinstance(rows, list):
             continue
         for index, row in enumerate(rows[:100]):
-            label = _safe_label(row, fallback)
+            if source == "memory" and isinstance(row, dict):
+                category_name = str(row.get("category") or "").strip()
+                label = f"Saved memory: {category_name}" if category_name else fallback
+            else:
+                label = _safe_label(row, fallback)
             text = row.get("text") if isinstance(row, dict) else ""
             items.append(
                 ContextItem(
