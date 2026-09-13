@@ -147,11 +147,11 @@ def test_list_sessions_filters_by_owned_project(monkeypatch):
         project_id if key == "project_id" else ""
     )
     router = sr.setup_session_routes(sm, {})
-    endpoint = next(
+    endpoint = [
         route.endpoint for route in router.routes
         if getattr(route, "path", "") == "/api/sessions"
         and "GET" in getattr(route, "methods", set())
-    )
+    ][-1]
 
     result = endpoint(request=request)
 
