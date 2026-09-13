@@ -1,5 +1,11 @@
 # Acknowledgments
 
+Odysseus-Lab is based on
+[Odysseus](https://github.com/odysseus-dev/odysseus), imported from commit
+`9d5c0319149bfb69ce22a35f37cf17debaa5f14b`. The upstream authors and
+contributors retain copyright in their work. Odysseus-Lab modifications are
+distributed under the same AGPL-3.0-or-later license; see [`FORK.md`](FORK.md).
+
 Odysseus stands on the shoulders of a lot of open-source work. This file
 credits the projects whose code, assets, or designs are included in or
 adapted by this repository, and notes their licenses.

@@ -8,7 +8,8 @@ This page keeps the detailed install, deployment, troubleshooting, and configura
 
 ## Quick Start
 
-> **Branch note:** `dev` is the default branch and contains the latest development changes, but it may be unstable. For the more stable curated branch, use [`main`](https://github.com/odysseus-dev/odysseus/tree/main).
+> **Branch note:** `main` is the integration and release branch for
+> Odysseus-Lab. Upstream changes are reviewed before they enter this branch.
 
 Defaults work out of the box: clone, run, then configure models/search/email
 inside **Settings**. Only edit `.env` for deployment-level overrides like
@@ -19,12 +20,13 @@ On first setup, Odysseus creates an admin account (`admin` unless
 For Docker installs, the same line is in `docker compose logs odysseus`.
 Use that for the first login, then change it in **Settings**.
 
-Contributing? See [CONTRIBUTING.md](https://github.com/odysseus-dev/odysseus/blob/dev/CONTRIBUTING.md) for setup, testing, and pull request guidelines.
+Contributing? See [CONTRIBUTING.md](../CONTRIBUTING.md) for setup, testing, and
+pull request guidelines.
 
 ### Docker (recommended)
 ```bash
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 cp .env.example .env       # optional, but recommended for explicit defaults
 docker compose up -d --build
 ```
@@ -41,8 +43,8 @@ only when you intentionally want LAN/reverse-proxy access.
 
 ### Native Linux / macOS
 ```bash
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -59,8 +61,8 @@ Docker on macOS cannot use the Metal GPU. For GPU-accelerated Cookbook on an
 M-series Mac, run Odysseus natively:
 
 ```bash
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 ./start-macos.sh
 ```
 
@@ -361,16 +363,16 @@ do not run on macOS. MLX-only models are not served by Odysseus.
 server; safe to re-run):
 
 ```powershell
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 powershell -ExecutionPolicy Bypass -File .\launch-windows.ps1
 ```
 
 Or do it by hand:
 
 ```powershell
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 py -3.11 -m venv venv
 venv\Scripts\Activate.ps1
 pip install -r requirements.txt
