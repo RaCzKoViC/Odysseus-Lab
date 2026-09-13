@@ -381,6 +381,18 @@ python setup.py
 python -m uvicorn app:app --host 127.0.0.1 --port 7000
 ```
 
+Native Windows is the lightweight application path: it connects directly to
+Ollama at `http://127.0.0.1:11434`, but it does not automatically start the
+bundled ChromaDB, SearXNG, or ntfy services. Use Docker Desktop for the complete
+stack. The launcher reports when Ollama is absent; from another terminal, run:
+
+```powershell
+venv\Scripts\python.exe scripts\odysseus-doctor
+```
+
+For Docker-to-host Ollama, `OLLAMA_HOST=0.0.0.0:11434` is required. Native
+Windows does not need that broader bind because it uses loopback directly.
+
 If `python` points at an older interpreter, use `py -3.12` (or another installed
 3.11+ version) for the venv step.
 

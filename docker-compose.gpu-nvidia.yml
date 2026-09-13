@@ -99,6 +99,12 @@ services:
         condition: service_healthy
       chromadb:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:7000/api/ready', timeout=5).read(1)\""]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 45s
     restart: unless-stopped
     # NVIDIA overlay (from docker/gpu.nvidia.yml).
     deploy:
@@ -110,7 +116,7 @@ services:
               capabilities: [gpu]
 
   chromadb:
-    image: docker.io/chromadb/chroma:latest
+    image: docker.io/chromadb/chroma@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
     ports:
       - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
     volumes:
@@ -175,7 +181,7 @@ services:
     restart: unless-stopped
 
   ntfy:
-    image: docker.io/binwiederhier/ntfy
+    image: docker.io/binwiederhier/ntfy@sha256:6ef4b819f722fccdc036af611c4774cfdc2de821ab74fdd48bbf4c9d6f8973da
     command: serve
     ports:
       - "${NTFY_BIND:-127.0.0.1}:8091:80"
