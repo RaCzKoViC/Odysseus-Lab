@@ -746,9 +746,14 @@ class TaskScheduler:
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
+            from core.database import ScheduledTask
+            task_project_id = _q_db.query(ScheduledTask.project_id).filter(
+                ScheduledTask.id == task_id
+            ).scalar()
             run = TaskRun(
                 id=run_id,
                 task_id=task_id,
+                project_id=task_project_id,
                 started_at=_utcnow(),
                 status="queued",
                 result="Queued — waiting for a free slot…",
@@ -882,6 +887,7 @@ class TaskScheduler:
                 run = TaskRun(
                     id=run_id,
                     task_id=task.id,
+                    project_id=getattr(task, "project_id", None),
                     started_at=_utcnow(),
                     status="running",
                     result="Starting…",
@@ -1546,6 +1552,7 @@ class TaskScheduler:
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
+                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
@@ -1733,6 +1740,7 @@ class TaskScheduler:
                 endpoint_url=endpoint_url or "",
                 model=model_name or "",
                 owner=task.owner,
+                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
@@ -2101,6 +2109,7 @@ class TaskScheduler:
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
+                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
