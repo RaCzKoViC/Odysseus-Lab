@@ -38,7 +38,8 @@ Timestamp defaults use `utcnow_naive()` so existing naive `DateTime` columns sta
 
 Current model families include:
 
-- chat sessions, messages, and `chat_messages_fts` transcript-search state/triggers;
+- owner-scoped Lab projects, nullable session-to-project links, chat sessions,
+  messages, and `chat_messages_fts` transcript-search state/triggers;
 - documents and document versions;
 - gallery albums/images, editor drafts, signatures, generated-media metadata;
 - email accounts, model endpoints, MCP servers, comparisons;
@@ -80,7 +81,13 @@ Owner-claiming is partly automatic and partly manual. `core.database._migrate_as
 
 ## Ownership And Access
 
-Owner columns are security-relevant. Current owner-bearing domains include sessions, documents, gallery images/albums, editor drafts, model endpoints, signatures, API tokens, user tools/tool data, comparisons, crew members, scheduled tasks/task runs, memories, notes, calendars/events, email accounts, and integrations. Webhooks are admin-global today and do not have an owner column.
+Owner columns are security-relevant. Current owner-bearing domains include
+projects, sessions, documents, gallery images/albums, editor drafts, model
+endpoints, signatures, API tokens, user tools/tool data, comparisons, crew
+members, scheduled tasks/task runs, memories, notes, calendars/events, email
+accounts, and integrations. Webhooks are admin-global today and do not have an
+owner column. Projects use strict owner equality and existing sessions remain
+unassigned through nullable `sessions.project_id`.
 
 Route code owns filtering for its domain. `src.auth_helpers.owner_filter()` is the common helper where available; gallery, documents, calendar, email, skills, and other surfaces also use local filters. Null-owner compatibility is domain-specific: shared endpoints may include null owners, while strict gates and disk stores may reject them. Do not rely on frontend filtering for access control.
 
@@ -102,6 +109,9 @@ Current JSON/local stores include:
 
 - `data/auth.json` for users, password hashes, TOTP, privileges, and auth settings;
 - `data/sessions.json` for persisted browser session tokens;
+- `data/projects/<uuid>/workspace/` for managed Project Core files; SQL remains
+  the project registry and filesystem directories contain no authoritative
+  project metadata;
 - `data/settings.json`, user preferences, feature flags, integration settings, and `data/embedding_endpoint.json`;
 - presets, API key manager state, memory/skills state, upload metadata, personal docs indexes, research JSON, background jobs, contacts/vault JSON, and task/cookbook auxiliary state.
 

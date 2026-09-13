@@ -96,6 +96,9 @@ Current major frontend areas include:
 - document editor/library in `static/js/document.js` and `static/js/documentLibrary.js`;
 - image editor integration in `static/js/galleryEditor.js` plus leaves under `static/js/editor/`;
 - gallery, email inbox/library, calendar, research panel/jobs/synapse, notes/tasks, assistant, memory/skills, Cookbook/HW Fit, workspace picker, provider device flow, composer ArrowUp recall, theme, modal/window utilities, storage, and accessibility helpers.
+- `static/js/projects.js` owns the Lab Project Pane, project CRUD, Overview,
+  Conversations, managed Files, and project Settings; `static/project.css`
+  isolates its responsive layout from the upstream stylesheet;
 
 Coordinator ownership:
 
