@@ -8,7 +8,7 @@ PRODUCT_NAME = "Odysseus-Lab"
 # Human-facing wordmark (window title, sidebar, welcome screen, PWA name).
 # PRODUCT_NAME stays the machine identifier used by /api/version and headers.
 PRODUCT_DISPLAY_NAME = "Odysseus - Lab"
-APP_VERSION = "0.2.2"
+APP_VERSION = "0.3.1"
 APP_DISTRIBUTION = "lab"
 REPOSITORY_URL = "https://github.com/RaCzKoViC/Odysseus-Lab"
 UPSTREAM_NAME = "Odysseus"

@@ -2,8 +2,14 @@
 
 import importlib.util
 import io
+import ntpath
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 
 _MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "platform_compat.py"
@@ -28,7 +34,7 @@ def test_find_bash_tries_windows_exe_suffix(monkeypatch):
         return expected if name == "bash.exe" else None
 
     monkeypatch.setattr(platform_compat.shutil, "which", fake_which)
-    monkeypatch.setattr(platform_compat.os.path, "exists", lambda _path: False)
+    monkeypatch.setattr(platform_compat.os.path, "isfile", lambda _path: False)
 
     assert platform_compat.find_bash() == expected
 
@@ -42,7 +48,7 @@ def test_find_bash_checks_local_app_data_git_install(monkeypatch):
     monkeypatch.setenv("LocalAppData", r"C:\Users\alice\AppData\Local")
 
     expected = r"C:\Users\alice\AppData\Local\Git\bin\bash.exe"
-    monkeypatch.setattr(platform_compat.os.path, "exists", lambda path: path == expected)
+    monkeypatch.setattr(platform_compat.os.path, "isfile", lambda path: path == expected)
 
     assert platform_compat.find_bash() == expected
 
@@ -56,25 +62,108 @@ def test_find_bash_checks_local_app_data_programs_git_install(monkeypatch):
     monkeypatch.setenv("LocalAppData", r"C:\Users\alice\AppData\Local")
 
     expected = r"C:\Users\alice\AppData\Local\Programs\Git\bin\bash.exe"
-    monkeypatch.setattr(platform_compat.os.path, "exists", lambda path: path == expected)
+    monkeypatch.setattr(platform_compat.os.path, "isfile", lambda path: path == expected)
 
     assert platform_compat.find_bash() == expected
 
 
-def test_find_bash_skips_windows_wsl_stub(monkeypatch):
+@pytest.mark.parametrize("stub", [
+    r"C:\WINDOWS\system32\bash.exe",
+    "C:/WINDOWS/sysnative/bash.exe",
+    "C:/Users/alice/AppData/Local/Microsoft/WindowsApps/bash.exe",
+])
+def test_find_bash_skips_windows_wsl_stub(monkeypatch, stub):
     _reset_bash_cache(monkeypatch)
     monkeypatch.setattr(platform_compat, "IS_WINDOWS", True)
 
-    stub = r"C:\WINDOWS\system32\bash.exe"
     expected = r"C:\Program Files\Git\bin\bash.exe"
     monkeypatch.setattr(
         platform_compat.shutil,
         "which",
         lambda name: stub if name == "bash" else None,
     )
-    monkeypatch.setattr(platform_compat.os.path, "exists", lambda path: path == expected)
+    monkeypatch.setattr(platform_compat.os.path, "isfile", lambda path: path == expected)
 
     assert platform_compat.find_bash() == expected
+
+
+@pytest.mark.parametrize("git_relative", [
+    r"cmd\git.exe", r"bin\git.exe", r"mingw64\bin\git.exe",
+    r"mingw32\bin\git.exe", r"usr\bin\git.exe",
+])
+@pytest.mark.parametrize("bash_relative", [r"bin\bash.exe", r"usr\bin\bash.exe"])
+def test_find_bash_prefers_git_install_from_path(monkeypatch, git_relative, bash_relative):
+    _reset_bash_cache(monkeypatch)
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", True)
+    root = r"D:\Portable tools\Git"
+    expected = ntpath.join(root, bash_relative)
+    git = ntpath.join(root, git_relative)
+    monkeypatch.setattr(
+        platform_compat.shutil, "which",
+        lambda name: {"bash": r"C:\Windows\system32\bash.exe", "git": git}.get(name),
+    )
+    # A second installation must not take precedence over the Git on PATH.
+    available = {expected, r"C:\Program Files\Git\bin\bash.exe"}
+    monkeypatch.setattr(platform_compat.os.path, "isfile", lambda path: path in available)
+
+    assert platform_compat.find_bash() == expected
+
+
+def test_find_bash_skips_directory_named_bash_exe(monkeypatch, tmp_path):
+    _reset_bash_cache(monkeypatch)
+    monkeypatch.setattr(platform_compat, "IS_WINDOWS", True)
+    monkeypatch.setattr(platform_compat.shutil, "which", lambda _name: None)
+    directory = tmp_path / "bin" / "bash.exe"
+    directory.mkdir(parents=True)
+    executable = tmp_path / "usr" / "bin" / "bash.exe"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    monkeypatch.setattr(
+        platform_compat, "_windows_bash_fallbacks", lambda: [str(directory), str(executable)],
+    )
+
+    assert platform_compat.find_bash() == str(executable)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows PowerShell launcher")
+@pytest.mark.parametrize("git_directory", ["cmd", "mingw64/bin", "usr/bin"])
+def test_windows_launcher_finds_portable_git_from_path(tmp_path, git_directory):
+    powershell = shutil.which("powershell.exe")
+    assert powershell, "Windows smoke tests require Windows PowerShell"
+    root = tmp_path / "Portable tools [test]" / "Git"
+    git = root / git_directory / "git.exe"
+    git.parent.mkdir(parents=True)
+    git.touch()
+    expected = root / "bin" / "bash.exe"
+    expected.parent.mkdir(parents=True)
+    expected.touch()
+    env = os.environ.copy()
+    env["PATH"] = str(git.parent) + os.pathsep + str(Path(os.environ["SystemRoot"]) / "System32")
+    env["ODYSSEUS_TEST_LAUNCHER"] = str(_MODULE_PATH.parents[1] / "launch-windows.ps1")
+    # Load only discovery functions: never execute setup, pip, or the server.
+    script = r"""
+$ErrorActionPreference = 'Stop'
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $env:ODYSSEUS_TEST_LAUNCHER, [ref]$tokens, [ref]$errors)
+if ($errors.Count) { throw 'Launcher has PowerShell syntax errors' }
+$definitions = $ast.FindAll({ param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -in @('Test-WindowsBashStub', 'Find-GitBash')
+}, $false)
+if ($definitions.Count -ne 2) { throw 'Discovery functions not found' }
+foreach ($definition in $definitions) {
+    . ([scriptblock]::Create($definition.Extent.Text))
+}
+Find-GitBash
+"""
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", script],
+        env=env, capture_output=True, text=True, timeout=30, check=True,
+    )
+
+    assert Path(result.stdout.strip()) == expected
 
 
 def test_is_wsl_true_when_proc_version_mentions_microsoft(monkeypatch):

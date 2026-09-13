@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -18,6 +19,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_CHECKS = {"python", "data", "app_health", "app_ready"}
+MAX_HEALTH_RESPONSE_BYTES = 16 * 1024
 
 
 def safe_url(value: str) -> str:
@@ -43,11 +45,34 @@ def http_probe(name: str, url: str, timeout: float) -> dict[str, Any]:
         request = Request(url, headers={"User-Agent": "Odysseus-Lab-Doctor/0.1"})
         with urlopen(request, timeout=timeout) as response:
             code = int(getattr(response, "status", 0))
-        status = "ok" if 200 <= code < 400 else "down"
+            if 200 <= code < 300 and name in {"app_health", "app_ready"}:
+                # A reverse proxy or authentication redirect may return an HTML
+                # page with HTTP 200. Only the app's explicit JSON signals prove
+                # liveness/readiness, and response contents stay out of reports.
+                raw = response.read(MAX_HEALTH_RESPONSE_BYTES + 1)
+                try:
+                    if len(raw) > MAX_HEALTH_RESPONSE_BYTES:
+                        raise ValueError("response too large")
+                    payload = json.loads(raw)
+                except (ValueError, UnicodeError):
+                    return result(name, "down", "invalid health response", url=display)
+                healthy = isinstance(payload, dict) and (
+                    payload.get("ready") is True if name == "app_ready"
+                    else payload.get("status") == "healthy"
+                )
+                if not healthy:
+                    return result(name, "down", "endpoint does not report healthy/ready", url=display)
+        status = "ok" if 200 <= code < 300 else "down"
         return result(name, status, f"HTTP {code}", url=display)
     except HTTPError as exc:
+        if name == "app_runtime" and exc.code == 401:
+            return result(
+                name, "auth_required",
+                "HTTP 401; sign in to inspect runtime details (not checked anonymously)",
+                url=display,
+            )
         return result(name, "down", f"HTTP {exc.code}", url=display)
-    except (URLError, TimeoutError, OSError, ValueError):
+    except (URLError, TimeoutError, OSError, ValueError, HTTPException):
         return result(name, "down", "unreachable", url=display)
 
 
@@ -64,13 +89,20 @@ def python_check() -> dict[str, Any]:
 
 def data_check(root: Path) -> dict[str, Any]:
     configured = os.environ.get("ODYSSEUS_DATA_DIR")
-    path = Path(configured).expanduser() if configured else root / "data"
-    parent = path if path.exists() else path.parent
-    writable = parent.exists() and os.access(parent, os.W_OK)
+    path = Path(configured or "data").expanduser()
+    if not path.is_absolute():
+        path = root / path
+    writable = path.is_dir() and os.access(path, os.W_OK)
+    if not path.exists():
+        detail = "data directory is missing"
+    elif not path.is_dir():
+        detail = "data path is not a directory"
+    else:
+        detail = "data directory is writable" if writable else "data directory is not writable"
     return result(
         "data",
         "ok" if writable else "down",
-        "data directory is writable" if writable else "data directory is not writable",
+        detail,
         path=str(path.resolve(strict=False)),
         exists=path.exists(),
     )
@@ -153,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"Odysseus-Lab doctor: {report['overall']}")
         for item in report["checks"]:
-            print(f"[{item['status'].upper():8}] {item['name']}: {item['detail']}")
+            print(f"[{item['status'].upper():13}] {item['name']}: {item['detail']}")
 
     if args.strict:
         return 0 if report["overall"] == "ok" else 1

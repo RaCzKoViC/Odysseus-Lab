@@ -187,6 +187,17 @@ SSH_PATH_OVERRIDE = _ssh_path_override()
 
 def _windows_bash_fallbacks() -> List[str]:
     roots: List[str] = []
+    # Git's installer commonly puts only <install>/cmd on PATH. Derive its
+    # root so custom and portable installations work without adding Bash to
+    # the global PATH. Git also ships executables under mingw*/bin and usr/bin.
+    git = which_tool("git")
+    if git:
+        git_dir = ntpath.dirname(ntpath.normpath(git))
+        root = ntpath.dirname(git_dir)
+        if ntpath.basename(git_dir).lower() in {"cmd", "bin"}:
+            if ntpath.basename(root).lower() in {"mingw64", "mingw32", "usr"}:
+                root = ntpath.dirname(root)
+            roots.append(root)
     for env_name in _WINDOWS_BASH_ROOT_ENV_VARS:
         base = os.environ.get(env_name)
         if base:
@@ -208,7 +219,7 @@ def _windows_bash_fallbacks() -> List[str]:
 
 
 def _is_windows_bash_stub(path: str) -> bool:
-    lowered = path.lower()
+    lowered = path.replace("/", "\\").lower()
     return (
         "system32\\bash.exe" in lowered
         or "sysnative\\bash.exe" in lowered
@@ -234,8 +245,9 @@ def git_bash_path(path: str | Path) -> str:
 def find_bash() -> Optional[str]:
     """Locate a real ``bash`` interpreter, or None.
 
-    On Windows this is typically Git Bash / WSL. Many Odysseus features (the
-    agent ``bash`` tool, background jobs, Cookbook scripts) emit bash syntax, so
+    On Windows this is typically Git Bash; WSL launcher stubs are excluded.
+    Many Odysseus features (the agent ``bash`` tool, background jobs, Cookbook
+    scripts) emit bash syntax, so
     when a bash is present we use it and keep full parity with POSIX. Result is
     cached.
     """
@@ -248,7 +260,7 @@ def find_bash() -> Optional[str]:
         found = None
     if not found and IS_WINDOWS:
         for cand in _windows_bash_fallbacks():
-            if os.path.exists(cand):
+            if os.path.isfile(cand):
                 found = cand
                 break
     _BASH_CACHE = found

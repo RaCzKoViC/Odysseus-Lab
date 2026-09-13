@@ -55,6 +55,7 @@ project documentation.
 - [model-providers/_readme.md](model-providers/_readme.md): provider-by-provider API/catalog shape index and compatibility status.
 - [agent-tools.md](agent-tools.md): agent loop, tool schemas, tool execution, tool retrieval, tool security, MCP tool exposure.
 - [context-building.md](context-building.md): URL/search/RAG/memory/skills/YouTube/email/tool-output context, untrusted wrapping, unavailable context, intent boundaries.
+- [context-engine.md](context-engine.md): Lab Context Manifest, model profile, token ledger, breakdown API, and Inspector contract.
 - [search.md](search.md): web search providers, ranking, cache/analytics, URL fetch/content extraction, `src.search`/`services.search` split.
 - [documents-rag-uploads.md](documents-rag-uploads.md): uploads, documents, PDF/form handling, personal docs, RAG/vector stores.
 - [memory-skills.md](memory-skills.md): memory storage, semantic memory, skill extraction/formatting, owner isolation.

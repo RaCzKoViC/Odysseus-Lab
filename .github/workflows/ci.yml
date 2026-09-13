@@ -162,6 +162,10 @@ jobs:
         if: steps.docs-check.outputs.docs_only != 'true'
       - run: python -m pytest -q
         if: steps.docs-check.outputs.docs_only != 'true'
+        env:
+          # Ubuntu runners have Docker. Exercise the backup helper against a
+          # disposable volume in one lane, including restoration of its data.
+          ODYSSEUS_TEST_DOCKER: ${{ matrix.python-version == '3.11' && '1' || '0' }}
 
   windows-foundation:
     name: Windows Foundation smoke

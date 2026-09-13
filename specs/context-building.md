@@ -22,6 +22,8 @@ This spec covers model-context construction in:
 - research flows in `src/deep_research.py`, `src/research_handler.py`, and `services/research/research_handler.py`;
 - memory and skills in `src/memory.py` and `services/memory/*`;
 - related policy in `THREAT_MODEL.md`.
+- read-only context observability in `src/context_engine/` and
+  `routes/history/history_routes.py`.
 
 ## Contract
 
@@ -34,6 +36,11 @@ Runtime rules:
 - preserve the user's original message for the model;
 - do not use regex preprocessing to force literal-vs-fetch intent;
 - do not disable tools or force a reply style solely because preprocessing found a URL.
+
+Context Engine 0.3.0 adds a secret-free manifest over persisted context. It
+does not replace or mutate this assembly contract. The manifest's Session and
+Last turn lenses must remain explicitly labeled because persisted history and
+the latest provider request measure different context surfaces.
 
 ## Untrusted Data
 

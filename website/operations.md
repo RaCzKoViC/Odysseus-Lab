@@ -28,6 +28,18 @@ curl --fail http://127.0.0.1:7000/api/version
 The temporary administrator password is printed by
 `docker compose logs odysseus`. Change it after the first login.
 
+### Git Bash on native Windows
+
+The agent's Bash tool requires Git for Windows. Both `launch-windows.ps1` and
+the application discover Bash beside the `git.exe` on `PATH`, including custom
+installations such as `C:\Git\cmd\git.exe` and portable installations with spaces
+in their paths. Standard machine-wide and per-user Git locations remain fallbacks.
+Windows WSL launcher stubs are skipped; WSL is not required for Git Bash.
+
+If Git was installed or its `PATH` entry changed while Odysseus was running,
+restart Odysseus from a terminal that sees the updated `PATH`. The application
+caches Bash discovery until it restarts.
+
 ## Diagnostics
 
 Run the read-only Foundation doctor from the repository root:
@@ -42,6 +54,18 @@ The report checks Python, the data directory, Compose configuration, application
 liveness/readiness/runtime, Ollama, ChromaDB, and SearXNG. URLs are sanitized
 before display. `--strict` also treats an unavailable optional service as a
 failure.
+
+On native Windows, run `venv\Scripts\python.exe scripts\odysseus-doctor --strict`.
+The health and readiness probes require the application's JSON success signals;
+an HTML login page or `ready: false` with HTTP 200 is a failure. A missing data
+directory is also a failure. Relative `ODYSSEUS_DATA_DIR` paths resolve against
+the selected `--repo`, not the shell's current directory.
+
+`AUTH_REQUIRED` on `app_runtime` means its HTTP 401 requires an authenticated
+session. The doctor does not load saved credentials or check those protected
+details. This expected restriction does not degrade an otherwise healthy report,
+including with `--strict`. Authentication errors on public health/readiness or
+other services remain failures.
 
 Authenticated administrators can inspect the deeper service report at
 `GET /api/diagnostics/services` and bounded log tail at
@@ -83,6 +107,9 @@ The command briefly stops running `odysseus` and `chromadb` services, creates a
 single bundle containing `app-data.tar.gz`, `chromadb.tar.gz`, and a checksummed
 manifest, then restarts only the services that were running. A Compose
 `chromadb` container must already exist so the actual volume can be identified.
+The archive operations use a separate, digest-pinned Python helper image because
+the ChromaDB image has no Python interpreter. The helper is downloaded and
+checked before services stop; its volume access runs with networking disabled.
 
 Backups contain the application encryption key, sessions, provider tokens,
 documents, and vector data. Store them as secrets. The `backups/` path is

@@ -36,6 +36,7 @@ import {
 } from './chatModelProvenance.js';
 import { createTerminalStreamError, isRecoverableStreamError } from './chatStreamErrors.js';
 import { loadPanel } from './panels.js';
+import contextInspector from './contextInspector.js?v=20260913context1';
 
   const RESEARCH_TIMEOUT_MS = 360000;
   const DEFAULT_TIMEOUT_MS = 120000;
@@ -150,9 +151,13 @@ import { loadPanel } from './panels.js';
   }
 
   function _closeContextHeaderPopup() {
+    contextInspector.closeContextInspector();
     document.querySelectorAll('.chat-context-popup').forEach(el => el.remove());
     const pill = document.getElementById('chat-context-pill');
-    if (pill) pill.classList.remove('open');
+    if (pill) {
+      pill.classList.remove('open');
+      pill.setAttribute('aria-expanded', 'false');
+    }
   }
 
   function _positionContextHeaderPopup(popup, pill) {
@@ -166,86 +171,21 @@ import { loadPanel } from './panels.js';
     if (pRect.bottom > window.innerHeight - 8) popup.style.top = `${Math.max(8, rect.top - pRect.height - 8)}px`;
   }
 
-  function _showContextHeaderPopup() {
+  async function _showContextHeaderPopup() {
     const pill = document.getElementById('chat-context-pill');
-    if (!pill || pill.hidden || !_contextHeaderData) return;
-    const wasOpen = pill.classList.contains('open');
-    _closeContextHeaderPopup();
-    if (wasOpen) return;
-
-    const d = _contextHeaderData;
-    const pct = Number(d.context_percent || 0);
-    const colorClass = _contextColorClass(pct);
-    const modelShort = String(d.model || 'Unknown').split('/').pop();
-    const popup = document.createElement('div');
-    popup.className = `chat-context-popup ${colorClass}`.trim();
-
-    const title = document.createElement('div');
-    title.className = 'chat-context-popup-title';
-    title.textContent = 'Chat Context';
-    popup.appendChild(title);
-
-    const bar = document.createElement('div');
-    bar.className = 'chat-context-popup-bar';
-    const fill = document.createElement('div');
-    fill.className = 'chat-context-popup-fill';
-    fill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-    bar.appendChild(fill);
-    popup.appendChild(bar);
-
-    const rows = [
-      ['Used', `${_fmtContextNumber(d.used_tokens)} / ${_fmtContextNumber(d.context_length)}`],
-      ['Usage', `${pct}%`],
-      ['Window model', modelShort],
-      ['Messages', `${Number(d.messages || 0).toLocaleString()}`],
-      ['Auto compact', `${Number(d.auto_compact_threshold || 85)}%`],
-    ];
-    rows.forEach(([label, value]) => {
-      const row = document.createElement('div');
-      row.className = 'chat-context-popup-row';
-      const a = document.createElement('span');
-      a.textContent = label;
-      const b = document.createElement('span');
-      b.textContent = value;
-      row.appendChild(a);
-      row.appendChild(b);
-      popup.appendChild(row);
-    });
-
-    if (d.can_compact) {
-      const compactBtn = document.createElement('button');
-      compactBtn.type = 'button';
-      compactBtn.className = 'chat-context-compact-btn';
-      compactBtn.textContent = 'Compact';
-      compactBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        compactBtn.disabled = true;
-        compactBtn.replaceChildren();
-        try {
-          const wp = spinnerModule.createWhirlpool(13);
-          wp.element.style.margin = '0 5px 0 0';
-          compactBtn.appendChild(wp.element);
-        } catch (_) {}
-        compactBtn.appendChild(document.createTextNode('Compacting'));
-        const ok = await compactCurrentChatContext();
-        if (!ok) {
-          compactBtn.disabled = false;
-          compactBtn.textContent = 'Compact failed';
-        }
+    const sm = _liveSessionModule();
+    const sessionId = sm && sm.getCurrentSessionId && sm.getCurrentSessionId();
+    if (!pill || pill.hidden || !_contextHeaderData || !sessionId) return;
+    try {
+      await contextInspector.toggleContextInspector({
+        sessionId,
+        pill,
+        onCompact: compactCurrentChatContext,
       });
-      popup.appendChild(compactBtn);
+    } catch (error) {
+      uiModule.showError(`Context Inspector failed: ${error.message || error}`);
+      _closeContextHeaderPopup();
     }
-
-    pill.classList.add('open');
-    _positionContextHeaderPopup(popup, pill);
-    setTimeout(() => {
-      const close = (ev) => {
-        if (popup.contains(ev.target) || pill.contains(ev.target)) return;
-        document.removeEventListener('pointerdown', close, true);
-        _closeContextHeaderPopup();
-      };
-      document.addEventListener('pointerdown', close, true);
-    }, 0);
   }
 
   function _bindContextHeaderPill() {
@@ -309,6 +249,10 @@ import { loadPanel } from './panels.js';
       _renderContextHeaderRing(pill, pct);
       _renderCompactMenuContextIcon(pct);
       pill.title = `${_fmtContextNumber(data.used_tokens)} / ${_fmtContextNumber(data.context_length)} tokens · ${String(data.model || '').split('/').pop()}`;
+      pill.setAttribute(
+        'aria-label',
+        `Open Context Inspector. ${pct.toFixed(1)} percent of session context used.`,
+      );
       pill.classList.remove('warn', 'danger');
       const colorClass = _contextColorClass(pct);
       if (colorClass) pill.classList.add(colorClass);
