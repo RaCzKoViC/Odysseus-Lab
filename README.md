@@ -13,7 +13,7 @@
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="ROADMAP.md">Roadmap</a> ·
   <a href="FORK.md">Fork &amp; Upstream</a> ·
-  <a href="docs/OPERATIONS.md">Operations</a>
+  <a href="website/operations.md">Operations</a>
 </p>
 
 <p align="center">
@@ -61,7 +61,7 @@ publishing is intentionally disabled while this repository remains private.
 ## Contributing
 
 Help is welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md),
-and the [upstream synchronization policy](docs/UPSTREAM.md).
+and the [upstream synchronization policy](website/upstream.md).
 
 ## Security
 

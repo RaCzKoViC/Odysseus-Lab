@@ -14,7 +14,7 @@ operated by the upstream maintainers.
 
 The exact tracked baseline is also stored in [`UPSTREAM_BASE`](UPSTREAM_BASE).
 The review and synchronization procedure is documented in
-[`docs/UPSTREAM.md`](docs/UPSTREAM.md).
+[`website/upstream.md`](website/upstream.md).
 
 ## Compatibility contract
 

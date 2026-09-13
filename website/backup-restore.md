@@ -127,6 +127,6 @@ the Foundation wrapper to capture both stores in one checksummed bundle:
 
 The wrapper briefly stops the app and ChromaDB for a consistent snapshot,
 restarts only services that were running, and validates exact members and
-checksums before restore. See [`docs/OPERATIONS.md`](https://github.com/RaCzKoViC/Odysseus-Lab/blob/main/docs/OPERATIONS.md)
+checksums before restore. See [operations runbook](operations.md)
 for the complete procedure. On native installs ChromaDB lives at
 `data/chroma/` and remains part of the normal app-data snapshot.

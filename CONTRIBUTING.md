@@ -9,7 +9,7 @@ Odysseus-Lab uses a protected trunk model:
 - **`main`** — the integration and release branch. All pull requests target it.
 - **feature branches** — short-lived branches for one focused change.
 - **`upstream/main` / `upstream/dev`** — read-only Odysseus references; see
-  [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
+  [`website/upstream.md`](website/upstream.md).
 
 **Open your PR against `main`.** Upstream synchronization belongs in a separate
 pull request and must never be mixed with a Lab feature.
