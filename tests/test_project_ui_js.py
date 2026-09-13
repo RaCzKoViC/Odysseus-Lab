@@ -30,6 +30,8 @@ def test_project_pane_has_accessible_tabs_and_close_control():
     assert "role=\"tabpanel\"" in source
     assert "aria-selected" in source
     assert "event.key === 'Escape'" in source
+    for tab in ("agents", "tasks", "memory", "models"):
+        assert f"'{tab}'" in source
 
 
 def test_project_ui_uses_text_content_for_server_values():
@@ -38,6 +40,9 @@ def test_project_ui_uses_text_content_for_server_values():
     assert "node.textContent = text" in source
     assert "pane.querySelector('#project-pane-title').textContent = currentProject.name" in source
     assert "innerHTML = currentProject" not in source
+    assert "/api/tasks?project_id=" in source
+    assert "/api/memory?project_id=" in source
+    assert "/agents" in source
 
 
 def test_project_css_has_mobile_touch_layout():
