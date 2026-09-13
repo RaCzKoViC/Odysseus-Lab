@@ -19,8 +19,7 @@ def test_project_model_and_session_link_are_additive():
     assert project_table.name == "projects"
     assert project_table.c.owner.nullable is False
     assert session_table.c.project_id.nullable is True
-    foreign_keys = {str(key.column) for key in session_table.c.project_id.foreign_keys}
-    assert foreign_keys == {"projects.id"}
+    assert not session_table.c.project_id.foreign_keys
 
 
 def test_project_migration_preserves_existing_sessions(monkeypatch, tmp_path):

@@ -185,8 +185,6 @@ class Project(TimestampMixin, Base):
     default_workspace_path = Column(String, nullable=False)
     sort_order = Column(Integer, nullable=False, default=0)
 
-    sessions = relationship("Session", back_populates="project", passive_deletes=True)
-
     __table_args__ = (
         Index("ix_projects_owner_status", "owner", "status"),
         Index("ix_projects_owner_name", "owner", "name"),
@@ -222,12 +220,10 @@ class Session(TimestampMixin, Base):
     endpoint_url = Column(String, nullable=False)
     model = Column(String, nullable=False)
     owner = Column(String, nullable=True, index=True)  # username; null = legacy/shared
-    project_id = Column(
-        String,
-        ForeignKey("projects.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+    # Application-validated instead of a database FK: several supported tools
+    # create the sessions table in isolation, matching the crew_member_id
+    # compatibility pattern below.
+    project_id = Column(String, nullable=True, index=True)
     
     # Configuration flags
     rag = Column(Boolean, default=False)
@@ -265,7 +261,6 @@ class Session(TimestampMixin, Base):
 
     # Relationship to chat messages
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
-    project = relationship("Project", back_populates="sessions")
     
     @property
     def is_active(self):
@@ -1343,10 +1338,7 @@ def _migrate_project_core():
             row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
         }
         if "project_id" not in columns:
-            conn.execute(
-                "ALTER TABLE sessions ADD COLUMN project_id TEXT "
-                "REFERENCES projects(id) ON DELETE SET NULL"
-            )
+            conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_sessions_project_id "
             "ON sessions(project_id)"

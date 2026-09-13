@@ -32,9 +32,11 @@ archive and never deletes conversations or workspace files.
 
 ## Compatibility
 
-`sessions.project_id` is nullable and uses `ON DELETE SET NULL`. Existing
-sessions remain unassigned after migration. APIs without a project filter keep
-their previous all-session behavior.
+`sessions.project_id` is nullable and application-validated. It deliberately
+does not use a database foreign key because supported tools and tests create
+the sessions table in isolation. Existing sessions remain unassigned after
+migration. APIs without a project filter keep their previous all-session
+behavior.
 
 Authentication-disabled mode stores Projects under the existing
 `__odysseus_local__` owner bucket. Authenticated routes always apply strict
