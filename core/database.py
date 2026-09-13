@@ -747,6 +747,7 @@ class CrewMember(TimestampMixin, Base):
 
     id            = Column(String, primary_key=True, index=True)
     owner         = Column(String, nullable=True, index=True)
+    project_id    = Column(String, nullable=True, index=True)
     name          = Column(String, nullable=False)
     avatar        = Column(String, nullable=True)
     user_name     = Column(String, nullable=True)          # what they call the user
@@ -759,6 +760,7 @@ class CrewMember(TimestampMixin, Base):
     is_active     = Column(Boolean, default=True)
     sort_order    = Column(Integer, default=0)
     is_default_assistant = Column(Boolean, default=False)   # singleton per-owner "personal assistant"
+    is_project_default = Column(Boolean, default=False)
     timezone      = Column(String, nullable=True)           # IANA tz name (e.g. "America/New_York") for scheduled check-ins
 
     session = relationship("Session", foreign_keys=[session_id],
@@ -771,6 +773,7 @@ class ScheduledTask(TimestampMixin, Base):
 
     id             = Column(String, primary_key=True, index=True)
     owner          = Column(String, nullable=True, index=True)
+    project_id     = Column(String, nullable=True, index=True)
     name           = Column(String, nullable=False, default="Untitled Task")
     prompt         = Column(Text, nullable=True)              # LLM prompt (for task_type="llm")
     task_type      = Column(String, default="llm")            # "llm" | "action"
@@ -851,6 +854,7 @@ class TaskRun(Base):
 
     id          = Column(String, primary_key=True, index=True)
     task_id     = Column(String, ForeignKey("scheduled_tasks.id", ondelete="CASCADE"), nullable=False)
+    project_id  = Column(String, nullable=True, index=True)
     started_at  = Column(DateTime, nullable=False, default=utcnow_naive)
     finished_at = Column(DateTime, nullable=True)
     status      = Column(String, default="running")  # "running", "success", "error"
@@ -1352,6 +1356,57 @@ def _migrate_project_core():
         if conn is not None:
             conn.rollback()
         logger.warning("Project Core migration failed: %s", exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _migrate_project_integrations():
+    """Add optional project scope to tasks, runs, and crew members."""
+    db_path = _sqlite_db_path(engine.url)
+    if db_path is None or not os.path.exists(db_path):
+        return
+    definitions = {
+        "scheduled_tasks": {
+            "project_id": "TEXT",
+        },
+        "task_runs": {
+            "project_id": "TEXT",
+        },
+        "crew_members": {
+            "project_id": "TEXT",
+            "is_project_default": "BOOLEAN DEFAULT 0",
+        },
+    }
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        for table, columns in definitions.items():
+            existing = {
+                row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if not existing:
+                continue
+            for column, ddl in columns.items():
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_tasks_owner_project "
+            "ON scheduled_tasks(owner, project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_crew_members_owner_project "
+            "ON crew_members(owner, project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_task_runs_project_id "
+            "ON task_runs(project_id)"
+        )
+        conn.commit()
+    except Exception as exc:
+        if conn is not None:
+            conn.rollback()
+        logger.warning("Project integration migration failed: %s", exc)
     finally:
         if conn is not None:
             conn.close()
@@ -2190,6 +2245,7 @@ def init_db():
     _migrate_add_last_message_at_column()
     _migrate_add_folder_column()
     _migrate_project_core()
+    _migrate_project_integrations()
     _migrate_add_token_columns()
     _migrate_add_mode_column()
     _migrate_add_multiuser_owner_columns()
