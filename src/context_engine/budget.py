@@ -1,0 +1,115 @@
+"""One route-aware budget allocator for chat and agent context shaping."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional
+
+from src.context_budget import (
+    DEFAULT_BUDGET,
+    DEFAULT_HARD_MAX,
+    budget_is_explicit,
+    compute_input_token_budget,
+)
+from src.context_compactor import trim_for_context
+from src.model_context import estimate_tokens, get_context_length_known
+
+
+@dataclass(frozen=True)
+class RouteBudgetPlan:
+    model: str
+    context_length: int
+    context_known: bool
+    input_budget: int
+    output_reserve: int
+    schema_tokens: int
+    message_window: int
+    tokens_before: int
+    tokens_after: int
+    messages_before: int
+    messages_after: int
+    explicit_soft_cap: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "context_length": self.context_length,
+            "context_known": self.context_known,
+            "input_budget": self.input_budget,
+            "output_reserve": self.output_reserve,
+            "schema_tokens": self.schema_tokens,
+            "message_window": self.message_window,
+            "tokens_before": self.tokens_before,
+            "tokens_after": self.tokens_after,
+            "messages_before": self.messages_before,
+            "messages_after": self.messages_after,
+            "explicit_soft_cap": self.explicit_soft_cap,
+        }
+
+
+def estimate_schema_tokens(schemas: Optional[Iterable[dict[str, Any]]]) -> int:
+    """Estimate provider tool/MCP schema overhead without a provider tokenizer."""
+    if not schemas:
+        return 0
+    try:
+        serialized = json.dumps(list(schemas), ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return 0
+    return int(len(serialized) * 0.3) + 4
+
+
+def shape_messages_for_route(
+    messages: list[dict[str, Any]],
+    *,
+    endpoint_url: str,
+    model: str,
+    fallback_context_length: int = 0,
+    output_reserve: int = 512,
+    schemas: Optional[Iterable[dict[str, Any]]] = None,
+    use_soft_budget: bool = False,
+    configured_soft_budget: int = DEFAULT_BUDGET,
+    hard_max: int = DEFAULT_HARD_MAX,
+) -> tuple[list[dict[str, Any]], RouteBudgetPlan]:
+    """Trim one route request and return the exact heuristic allocation ledger."""
+    discovered, known = get_context_length_known(endpoint_url, model)
+    context_length = int(discovered or fallback_context_length or 0)
+    if not context_length:
+        context_length = int(fallback_context_length or 128000)
+    output_reserve = max(0, int(output_reserve or 0))
+    schema_tokens = estimate_schema_tokens(schemas)
+    explicit = budget_is_explicit(configured_soft_budget)
+    if use_soft_budget:
+        input_budget = compute_input_token_budget(
+            configured_soft_budget,
+            context_length if known else 0,
+            explicit,
+            hard_max=max(1, int(hard_max or DEFAULT_HARD_MAX)),
+        )
+    else:
+        input_budget = context_length
+
+    # trim_for_context subtracts output_reserve itself. Reserve schema overhead
+    # first so messages + provider tools + output all fit the same route budget.
+    message_window = max(output_reserve + 64, input_budget - schema_tokens)
+    before_tokens = int(estimate_tokens(messages))
+    shaped = trim_for_context(
+        list(messages),
+        message_window,
+        reserve_tokens=output_reserve,
+    )
+    plan = RouteBudgetPlan(
+        model=model or "",
+        context_length=context_length,
+        context_known=bool(known),
+        input_budget=input_budget,
+        output_reserve=output_reserve,
+        schema_tokens=schema_tokens,
+        message_window=message_window,
+        tokens_before=before_tokens,
+        tokens_after=int(estimate_tokens(shaped)),
+        messages_before=len(messages),
+        messages_after=len(shaped),
+        explicit_soft_cap=explicit,
+    )
+    return shaped, plan
