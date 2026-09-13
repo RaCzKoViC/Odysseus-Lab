@@ -73,6 +73,9 @@ GET    /api/projects/{id}/sessions
 PUT    /api/projects/{id}/sessions/{session_id}
 DELETE /api/projects/{id}/sessions/{session_id}
 GET    /api/projects/{id}/files
+GET    /api/projects/{id}/export
+POST   /api/projects/import
+POST   /api/projects/{id}/assign
 GET    /api/projects/{id}/agents
 POST   /api/projects/{id}/agents
 PATCH  /api/projects/{id}/agents/{agent_id}
@@ -81,6 +84,17 @@ DELETE /api/projects/{id}/agents/{agent_id}
 
 Cross-owner project and session access returns 404. Unknown project settings
 are rejected and settings never hold credentials.
+
+Project bundles use `odysseus-project.v1`. They include project metadata,
+sanitized conversations, paused task definitions, agents, project memories,
+and bounded managed-workspace files. Credentials, endpoint URLs, request
+headers, webhook tokens, and message metadata are never exported. Import
+validates total size, per-file size, base64, relative paths, message roles, and
+owner stamping before persistence.
+
+The assignment API moves explicitly selected owner sessions and memories into a
+project. It defaults to unassigned-only and rejects cross-owner or already
+assigned records rather than silently moving them.
 
 ## 0.2.x extension points
 
@@ -94,4 +108,4 @@ duplicated. Memory visibility is `inherit`, `project_plus_global`, or
 
 - External repository roots are not registered in 0.2.x.
 - The managed Files tab is read-only.
-- Project artifacts and integration counters are not yet included in Overview.
+- Rich artifact types are not yet included in project bundles.
