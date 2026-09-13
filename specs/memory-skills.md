@@ -25,7 +25,18 @@ This spec covers persistent memory and user skills in:
 
 `src.app_initializer.initialize_managers()` creates the active `src.memory.MemoryManager` and `src.memory_vector.MemoryVectorStore` used by app startup. `routes.memory.memory_routes` imports through `services.memory` but is passed the startup manager instances; top-level `routes.memory_routes` is a `sys.modules` compatibility shim.
 
-`MemoryManager` owns JSON-backed memory storage in `data/memory.json`, validation, owner fields, pinned state, use counts, and text/keyword similarity. Read-only `load_all()` remains lenient and can degrade an unreadable store to no memories. Mutating read-modify-write paths use `load_all_for_update()`, which raises `MemoryStoreUnreadable` rather than letting a corrupt or unreadable file be overwritten with an empty list. Agent/MCP/native-provider adds, extraction, backup import, and owner migration preserve that distinction; legacy `memory.txt` migration remains allowed. `MemoryVectorStore` owns semantic lookup when Chroma and embeddings are reachable.
+`MemoryManager` owns JSON-backed memory storage in `data/memory.json`,
+validation, owner and optional `project_id` fields, pinned state, use counts,
+and text/keyword similarity. Project visibility modes are `inherit`,
+`project_plus_global`, and `project_only`; omitting a project preserves the
+owner-global behavior. Read-only `load_all()` remains lenient and can degrade an
+unreadable store to no memories. Mutating read-modify-write paths use
+`load_all_for_update()`, which raises `MemoryStoreUnreadable` rather than
+letting a corrupt or unreadable file be overwritten with an empty list.
+Agent/MCP/native-provider adds, extraction, backup import, and owner migration
+preserve that distinction; legacy `memory.txt` migration remains allowed.
+`MemoryVectorStore` owns semantic lookup when Chroma and embeddings are
+reachable and stores owner/project metadata for newly indexed rows.
 
 Chat memory behavior:
 

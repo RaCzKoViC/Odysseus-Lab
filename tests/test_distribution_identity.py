@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_lab_distribution_metadata_is_explicit():
     assert PRODUCT_NAME == "Odysseus-Lab"
-    assert APP_VERSION == "0.2.0"
+    assert APP_VERSION == "0.2.1"
     assert APP_DISTRIBUTION == "lab"
     assert REPOSITORY_URL.endswith("/RaCzKoViC/Odysseus-Lab")
     assert UPSTREAM_VERSION == "1.0.3"

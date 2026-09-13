@@ -6,8 +6,8 @@ Last updated: lab@5c16773e | 2026-09-13
 
 This spec covers `core/database.py`, `src/project_scope.py`,
 `src/project_paths.py`, `routes/project/`, session linkage in
-`routes/session_routes.py`, and the minimal frontend in
-`static/js/projects.js`.
+`routes/session_routes.py`, project tasks in `routes/task/`, project memory in
+`src/memory.py`, and the frontend in `static/js/projects.js`.
 
 Odysseus-Lab 0.2 adds Projects as an optional owner-scoped container around
 existing conversations and a managed workspace. It does not replace sessions,
@@ -73,6 +73,10 @@ GET    /api/projects/{id}/sessions
 PUT    /api/projects/{id}/sessions/{session_id}
 DELETE /api/projects/{id}/sessions/{session_id}
 GET    /api/projects/{id}/files
+GET    /api/projects/{id}/agents
+POST   /api/projects/{id}/agents
+PATCH  /api/projects/{id}/agents/{agent_id}
+DELETE /api/projects/{id}/agents/{agent_id}
 ```
 
 Cross-owner project and session access returns 404. Unknown project settings
@@ -80,14 +84,14 @@ are rejected and settings never hold credentials.
 
 ## 0.2.x extension points
 
-Later 0.2 releases may add nullable `project_id` to tasks, crew members,
-documents, and memory records. Model endpoints remain owner/global
-infrastructure referenced by project settings; they are not duplicated.
+0.2.1 adds nullable `project_id` to scheduled tasks, task runs, CrewMember
+agents, and JSON memory records. Project settings reference model endpoints and
+default models; endpoint rows remain owner/global infrastructure and are not
+duplicated. Memory visibility is `inherit`, `project_plus_global`, or
+`project_only`, with `inherit` preserving the 0.2.0 behavior.
 
 ## Current Gaps
 
-- Project settings are persisted but memory/model integration begins in 0.2.1.
-- External repository roots are not registered in 0.2.0.
+- External repository roots are not registered in 0.2.x.
 - The managed Files tab is read-only.
-- Project tasks, agents, artifacts, and memory counters are not yet included in
-  Overview.
+- Project artifacts and integration counters are not yet included in Overview.
