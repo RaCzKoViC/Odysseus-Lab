@@ -7,6 +7,7 @@ headers), and the no-key case.
 import pytest
 
 from src import endpoint_resolver as er
+from src.constants import PRODUCT_NAME, REPOSITORY_URL
 
 
 def test_headers_anthropic_uses_x_api_key():
@@ -41,8 +42,8 @@ def test_headers_openrouter_adds_attribution():
     h = er.build_headers("secret", "https://openrouter.ai/api/v1")
     assert h["Authorization"] == "Bearer secret"
     # OpenRouter ranks/labels apps via these headers.
-    assert h["HTTP-Referer"].startswith("https://github.com/")
-    assert h["X-OpenRouter-Title"] == "Odysseus"
+    assert h["HTTP-Referer"] == REPOSITORY_URL
+    assert h["X-OpenRouter-Title"] == PRODUCT_NAME
 
 
 def test_headers_omit_authorization_when_no_key():

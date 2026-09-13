@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/odysseus-wordmark.png" alt="Odysseus-Lab" width="238">
+  <img src="assets/branding/odysseus-wordmark.png" alt="Odysseus" width="238">
 </p>
 
 <p align="center">
