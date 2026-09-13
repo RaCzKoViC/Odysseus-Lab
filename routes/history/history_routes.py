@@ -9,7 +9,12 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
 
 from core.models import ChatMessage
-from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
+from core.database import (
+    Project,
+    SessionLocal,
+    ChatMessage as DbChatMessage,
+    Session as DbSession,
+)
 from src.auth_helpers import effective_user, require_chat_api_token_scope
 from src.topic_analyzer import analyze_topics
 from src.upload_handler import reserve_message_upload_references
@@ -709,6 +714,66 @@ def setup_history_routes(session_manager, upload_handler=None) -> APIRouter:
         except Exception as e:
             logger.error(f"Context usage error {session_id}: {e}")
             raise HTTPException(500, str(e))
+
+    @router.get("/api/session/{session_id}/context_breakdown")
+    async def get_session_context_breakdown(
+        request: Request,
+        session_id: str,
+    ) -> Dict[str, Any]:
+        """Return a secret-free Context Manifest for the persisted session."""
+        _verify_session_owner(request, session_id)
+        owner = effective_user(request)
+        try:
+            session = session_manager.get_session(session_id)
+        except KeyError:
+            raise HTTPException(404, "Session not found")
+
+        project = None
+        db = None
+        try:
+            project_id = getattr(session, "project_id", None)
+            if project_id:
+                from src.owner_identity import effective_storage_owner
+
+                storage_owner = effective_storage_owner(owner)
+                if storage_owner:
+                    db = SessionLocal()
+                    project = db.query(Project).filter(
+                        Project.id == project_id,
+                        Project.owner == storage_owner,
+                    ).first()
+            from routes.prefs_routes import _load_for_user
+            from src.context_engine import build_context_manifest
+            from src.settings import load_settings
+
+            settings = dict(load_settings() or {})
+            user_prefs = _load_for_user(owner) or {}
+            for key in (
+                "agent_input_token_budget",
+                "agent_input_token_hard_max",
+                "memory_enabled",
+                "skills_enabled",
+            ):
+                if key in user_prefs:
+                    settings[key] = user_prefs[key]
+            return build_context_manifest(
+                session,
+                owner=owner,
+                project=project,
+                settings=settings,
+            ).to_dict()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error(
+                "Context breakdown error %s: %s",
+                session_id,
+                type(exc).__name__,
+            )
+            raise HTTPException(500, "Failed to build context breakdown")
+        finally:
+            if db is not None:
+                db.close()
 
     @router.post("/api/session/{session_id}/compact")
     async def compact_session(request: Request, session_id: str):
