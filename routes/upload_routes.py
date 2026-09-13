@@ -35,6 +35,95 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 UPLOAD_RESPONSE_HEADERS = {"X-Content-Type-Options": "nosniff"}
 
+# Attachment preview helpers (chat panel inline previews).
+_INLINE_PREVIEW_MIMES = ("application/pdf",)
+_INLINE_PREVIEW_PREFIXES = ("image/", "audio/", "video/")
+_PREVIEW_LANGUAGES = {
+    ".py": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".ts": "typescript", ".tsx": "typescript", ".jsx": "javascript", ".json": "json",
+    ".html": "html", ".htm": "html", ".css": "css", ".xml": "xml", ".svg": "xml",
+    ".yml": "yaml", ".yaml": "yaml", ".toml": "toml", ".ini": "ini", ".cfg": "ini",
+    ".conf": "ini", ".env": "bash", ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    ".ps1": "powershell", ".bat": "dos", ".cmd": "dos", ".sql": "sql", ".c": "c",
+    ".h": "c", ".cpp": "cpp", ".hpp": "cpp", ".cc": "cpp", ".java": "java",
+    ".kt": "kotlin", ".go": "go", ".rs": "rust", ".php": "php", ".rb": "ruby",
+    ".swift": "swift", ".r": "r", ".lua": "lua", ".nix": "nix", ".tex": "latex",
+    ".diff": "diff", ".patch": "diff", ".log": "plaintext", ".txt": "plaintext",
+    ".rst": "plaintext", ".csv": "csv", ".tsv": "csv", ".md": "markdown",
+    ".markdown": "markdown", ".mdx": "markdown",
+}
+_PREVIEW_TEXT_BYTES = 4 * 1024 * 1024
+_PREVIEW_OFFICE_EXTS = (".docx", ".xlsx", ".pptx", ".xls", ".epub", ".odt", ".rtf")
+
+
+def _inline_preview_allowed(mime: str) -> bool:
+    """Only media browsers render natively may be served inline (no HTML/JS)."""
+    m = (mime or "").lower()
+    return m in _INLINE_PREVIEW_MIMES or m.startswith(_INLINE_PREVIEW_PREFIXES)
+
+
+def _decode_text_bytes(raw: bytes) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            from charset_normalizer import detect
+            encoding = (detect(raw) or {}).get("encoding") or "utf-8"
+        except Exception:
+            encoding = "utf-8"
+        return raw.decode(encoding, errors="replace")
+
+
+def _extract_preview_text(path: str, name: str, mime: str) -> tuple:
+    """Return ``(kind, language, text)``; ``kind`` is None when nothing applies.
+
+    kind is ``markdown`` (rendered as markdown), ``table`` (CSV/TSV), ``json``,
+    ``code`` (highlighted), ``text`` or ``document`` (PDF/Office, rendered as
+    markdown-ish text)."""
+    ext = os.path.splitext((name or path).lower())[1]
+    if ext == ".pdf" or mime == "application/pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            pages = []
+            for index, page in enumerate(reader.pages[:200]):
+                page_text = (page.extract_text() or "").strip()
+                if page_text:
+                    pages.append(f"## Page {index + 1}\n\n{page_text}")
+            return ("document", "markdown", "\n\n".join(pages)) if pages else ("document", "markdown", "")
+        except Exception as exc:
+            logger.warning(f"PDF preview extraction failed for {path}: {exc}")
+            return (None, None, "")
+    if ext in _PREVIEW_OFFICE_EXTS:
+        try:
+            from src.markitdown_runtime import convert_to_markdown
+            text = convert_to_markdown(path)
+        except Exception as exc:
+            logger.warning(f"Office preview extraction failed for {path}: {exc}")
+            text = None
+        return ("document", "markdown", text) if text else (None, None, "")
+    language = _PREVIEW_LANGUAGES.get(ext)
+    if language is None and not mime.startswith("text/"):
+        return (None, None, "")
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read(_PREVIEW_TEXT_BYTES + 1)
+    except OSError as exc:
+        logger.warning(f"Preview read failed for {path}: {exc}")
+        return (None, None, "")
+    if b"\x00" in raw[:4096]:
+        return (None, None, "")  # binary masquerading as text
+    text = _decode_text_bytes(raw[:_PREVIEW_TEXT_BYTES])
+    if ext in (".md", ".markdown", ".mdx"):
+        return ("markdown", "markdown", text)
+    if ext in (".csv", ".tsv"):
+        return ("table", "csv", text)
+    if ext == ".json":
+        return ("json", "json", text)
+    if language in (None, "plaintext"):
+        return ("text", "plaintext", text)
+    return ("code", language, text)
+
 def _upload_ids_from_persisted_text(value: object) -> set[str]:
     """Return canonical upload IDs embedded in persisted text.
 
@@ -351,10 +440,13 @@ def setup_upload_routes(upload_handler):
             raise HTTPException(500, "Failed to get upload statistics")
 
     @router.get("/{file_id}")
-    async def download_file(request: Request, file_id: str, thumb: int = 0):
+    async def download_file(request: Request, file_id: str, thumb: int = 0, inline: int = 0):
         """Serve an uploaded file by its ID. `?thumb=1` returns a small cached
         JPEG thumbnail for images (used by chat attachment previews) so the
-        client isn't downloading the full-resolution photo just to show it tiny."""
+        client isn't downloading the full-resolution photo just to show it tiny.
+        `?inline=1` drops the attachment disposition for PDF/image/audio/video
+        so the chat can embed them; every other type stays a download so an
+        uploaded HTML file can never execute on the app origin."""
         if not upload_handler.validate_upload_id(file_id):
             raise HTTPException(400, "Invalid file ID")
         import mimetypes as _mt
@@ -403,12 +495,53 @@ def setup_upload_routes(upload_handler):
             except Exception as e:
                 logger.warning(f"Thumbnail generation failed for {file_id}: {e}")
                 # Fall through to the full image.
+        if inline and _inline_preview_allowed(mime):
+            return FileResponse(path, media_type=mime, headers=UPLOAD_RESPONSE_HEADERS)
         return FileResponse(
             path,
             media_type=mime,
             filename=original_name,
             headers=UPLOAD_RESPONSE_HEADERS,
         )
+
+    @router.get("/{file_id}/text")
+    async def upload_text(request: Request, file_id: str, max_chars: int = 200_000):
+        """Extracted text for inline attachment previews in the chat panel.
+
+        Text-like files are decoded (UTF-8 first, then charset detection),
+        PDFs go through pypdf and Office/EPUB documents through the optional
+        markitdown runtime. Answers ``{kind, language, text, truncated}``; a
+        format nothing can extract answers 415 so the client shows a download
+        card instead of an empty preview. Same owner rules as the download."""
+        if not upload_handler.validate_upload_id(file_id):
+            raise HTTPException(400, "Invalid file ID")
+        db = upload_handler._load_upload_index()
+        info = next((fi for fi in db.values() if fi.get("id") == file_id), None)
+        auth_mgr = getattr(request.app.state, "auth_manager", None)
+        auth_configured = bool(auth_mgr and auth_mgr.is_configured)
+        current_user = effective_user(request)
+        file_owner = info.get("owner") if info else None
+        if auth_configured:
+            if not current_user:
+                raise HTTPException(403, "Access denied")
+            if file_owner != current_user and not auth_mgr.is_admin(current_user):
+                raise HTTPException(404, "File not found")
+        path = _resolve_upload_path(file_id)
+        name = (info or {}).get("name") or file_id
+        mime = ((info or {}).get("mime") or "").lower()
+        limit = max(1_000, min(int(max_chars or 0) or 200_000, 500_000))
+        kind, language, text = _extract_preview_text(path, name, mime)
+        if kind is None:
+            raise HTTPException(415, "No text preview for this format")
+        truncated = len(text) > limit
+        return {
+            "id": file_id,
+            "name": name,
+            "kind": kind,
+            "language": language,
+            "text": text[:limit],
+            "truncated": truncated,
+        }
 
     def _load_upload_info(file_id: str):
         """Look up the uploads.json record for a file_id, with owner/auth checks."""

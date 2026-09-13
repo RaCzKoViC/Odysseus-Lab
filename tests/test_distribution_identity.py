@@ -5,6 +5,7 @@ from pathlib import Path
 from src.constants import (
     APP_DISTRIBUTION,
     APP_VERSION,
+    PRODUCT_DISPLAY_NAME,
     PRODUCT_NAME,
     REPOSITORY_URL,
     UPSTREAM_REPOSITORY,
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_lab_distribution_metadata_is_explicit():
     assert PRODUCT_NAME == "Odysseus-Lab"
+    assert PRODUCT_DISPLAY_NAME == "Odysseus - Lab"
     assert APP_VERSION == "0.3.1"
     assert APP_DISTRIBUTION == "lab"
     assert REPOSITORY_URL.endswith("/RaCzKoViC/Odysseus-Lab")
@@ -26,8 +28,8 @@ def test_lab_distribution_metadata_is_explicit():
 
 def test_pwa_manifest_uses_lab_identity():
     manifest = json.loads((ROOT / "static" / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == PRODUCT_NAME
-    assert manifest["short_name"] == PRODUCT_NAME
+    assert manifest["name"] == PRODUCT_DISPLAY_NAME
+    assert manifest["short_name"] == PRODUCT_DISPLAY_NAME
 
 
 def test_version_route_is_additive():

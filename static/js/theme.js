@@ -29,6 +29,18 @@ export const THEMES = {
                             inputBg: '#2f2f2f', brandColor: '#ffffff', brandMixTo: '#ffffff' } },
   claude:     { bg:'#262624', fg:'#f5f4f0', panel:'#30302e', border:'#4a4a47', red:'#c6613f' },
   cute:       { bg:'#fff0f5', fg:'#d4608a', panel:'#fff8fa', border:'#f0c0d0', red:'#ff6b9d' },
+  // Liquid Glass (Odysseus-Lab): translucent layered glass over a backlit
+  // wallpaper. The preset switches on the frosted mode and the `liquid`
+  // wallpaper pattern; `body.theme-liquid-glass` in style.css adds the
+  // specular edges, pill navigation and glow. Palette is deliberately
+  // high-contrast so icons, sliders and labels read over the blur.
+  'liquid-glass': { bg:'#0d1220', fg:'#e6eef8', panel:'#141b2d', border:'#3d4d6b', red:'#ff7a8c',
+                advanced: { brandColor: '#ff8aa0', brandMixTo: '#ffe1e8',
+                            sendBtnBg: '#ff6b81', sendBtnHover: '#ff8598',
+                            userBubbleBg: '#1a2238', aiBubbleBg: '#121a2c',
+                            bubbleBorder: '#3d4d6b', sidebarBg: '#111828',
+                            inputBg: '#161e32', inputBorder: '#4a5c7e',
+                            codeBg: '#0a0f1c', codeFg: '#dbe6f5', toggleActive: '#ff7a8c' } },
 };
 
 const DEFAULT_THEME = 'dark';
@@ -48,6 +60,7 @@ const MAX_CUSTOM_THEMES = 8;
 // Default background patterns for built-in themes
 const THEME_DEFAULT_PATTERN = {
   dark:       'none',
+  'liquid-glass': 'liquid',
   light:      'dots',
   midnight:   'rain',
   paper:      'dots',
@@ -79,7 +92,16 @@ const THEME_DEFAULT_INTENSITY = {
 // Default frosted-glass state per theme. Themes not listed default to false.
 const THEME_DEFAULT_FROSTED = {
   lavender:   true,
+  'liquid-glass': true,
 };
+
+// Human labels for preset swatches whose key is not display-friendly.
+function _swatchLabel(name) {
+  if (name === 'dark') return 'original';
+  if (name === 'gpt') return 'GPT';
+  if (name === 'liquid-glass') return 'Liquid Glass';
+  return name;
+}
 
 // ── Custom theme persistence ──
 function _loadCustomThemes() {
@@ -405,7 +427,8 @@ export function applyUiScale(scale) {
 const _BG_CLASSES = ['bg-pattern-dots',
   'bg-pattern-synapse', 'bg-pattern-rain', 'bg-pattern-constellations',
   'bg-pattern-perlin-flow',
-  'bg-pattern-petals', 'bg-pattern-sparkles', 'bg-pattern-embers'];
+  'bg-pattern-petals', 'bg-pattern-sparkles', 'bg-pattern-embers',
+  'bg-pattern-liquid'];
 const _CANVAS_PATTERNS = { synapse: _initSynapse, rain: _initRain, constellations: _initConstellations,
   'perlin-flow': _initPerlinFlow,
   petals: _initPetals, sparkles: _initSparkles, embers: _initEmbers };
@@ -433,6 +456,17 @@ export function applyFrostedGlass(on) {
   document.body.classList.toggle('theme-frosted', !!on);
 }
 
+/** Theme-specific modes that go beyond colors. The Liquid Glass preset
+ *  layers its wallpaper + specular glass rules (`body.theme-liquid-glass`)
+ *  on top of the frosted mode it also switches on. Mirrored on <html> so
+ *  the early boot script in index.html can paint the wallpaper before
+ *  this module runs. */
+export function applyThemeMode(name) {
+  const liquid = name === 'liquid-glass';
+  document.body.classList.toggle('theme-liquid-glass', liquid);
+  document.documentElement.classList.toggle('theme-liquid-glass', liquid);
+}
+
 // Read current size multiplier for JS effects (canvas-based).
 function _getEffectSize() {
   const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--bg-effect-size'));
@@ -440,7 +474,7 @@ function _getEffectSize() {
 }
 
 // Patterns where the intensity/size sliders have no visible effect.
-const _STATIC_PATTERNS = new Set(['none', 'dots']);
+const _STATIC_PATTERNS = new Set(['none', 'dots', 'liquid']);
 
 export function applyBgPattern(pattern) {
   const p = pattern || 'none';
@@ -467,6 +501,7 @@ export function getSaved() {
 }
 
 export function save(name, colors, opts) {
+  applyThemeMode(name);
   const obj = { name, colors };
   if (opts) {
     if (opts.font && opts.font !== DEFAULT_FONT) obj.font = opts.font;
@@ -647,7 +682,7 @@ export function initThemeUI() {
         <span style="background:${c.fg}"></span>
         <span style="background:${c.red}"></span>
       </div>
-      ${name === 'dark' ? 'original' : (name === 'gpt' ? 'GPT' : name)}
+      ${_swatchLabel(name)}
     </div>
   `).join('');
 
@@ -1108,6 +1143,7 @@ export function initThemeUI() {
   applyBgEffectIntensity(_initEffectIntensity);
   applyBgEffectSize(_initEffectSize);
   applyFrostedGlass(_initFrosted);
+  applyThemeMode(saved ? saved.name : DEFAULT_THEME);
   applyBgPattern(_initPattern);
 
   const fontSelect = document.getElementById('theme-font-select');

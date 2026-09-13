@@ -603,6 +603,13 @@ export function processWithThinking(text) {
   return _useSvgEmoji() ? svgifyEmoji(html) : html;
 }
 
+// Fenced blocks longer than this many lines render inside a collapsed
+// scrolling frame (see `pre.code-block.code-collapsed` in style.css). The
+// streaming renderer mirrors the same threshold while a fence is still open.
+export const CODE_COLLAPSE_LINES = 24;
+const CODE_REGEN_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
+const CODE_EXPAND_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+
 /**
  * Convert markdown to HTML
  */
@@ -643,7 +650,16 @@ export function mdToHtml(src, opts) {
       ? `<button type="button" class="run-code" data-code="${escapeHtml(escaped)}" data-lang="${lang}" title="Run code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></button>`
       : '';
     const editBtn = `<button type="button" class="edit-code" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`;
-    codeBlocks.push(`<pre><code${langClass} data-lang="${lang || ''}">${escapeHtml(escaped)}</code>${runBtn}${editBtn}<button type="button" class="copy-code" data-code="${escapeHtml(escaped)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></pre>`);
+    // Header row (language + tools) and, for long blocks, a collapsed
+    // scrolling frame with an expand toggle. See `pre.code-block` in style.css.
+    const lineCount = cleaned ? cleaned.split('\n').length : 0;
+    const collapsed = lineCount > CODE_COLLAPSE_LINES;
+    const copyBtn = `<button type="button" class="copy-code" data-code="${escapeHtml(escaped)}" title="Copy code" aria-label="Copy code"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>`;
+    const regenBtn = `<button type="button" class="regen-code" title="Regenerate this reply" aria-label="Regenerate this reply">${CODE_REGEN_ICON}</button>`;
+    const expandBtn = collapsed
+      ? `<button type="button" class="code-expand" aria-expanded="false" title="Show the whole block">${CODE_EXPAND_ICON}<span class="code-expand-label">Show all ${lineCount} lines</span></button>`
+      : '';
+    codeBlocks.push(`<pre class="code-block${collapsed ? ' code-collapsed' : ''}" data-lines="${lineCount}"><span class="code-head"><span class="code-lang">${lang ? escapeHtml(lang) : 'code'}</span><span class="code-tools">${runBtn}${editBtn}${regenBtn}${copyBtn}</span></span><code${langClass} data-lang="${lang || ''}">${escapeHtml(escaped)}</code>${expandBtn}</pre>`);
 
     return placeholder;
   });
@@ -987,6 +1003,7 @@ export function renderMath(container) {
 }
 
 const markdownModule = {
+  CODE_COLLAPSE_LINES,
   escapeHtml,
   mdToHtml,
   sanitizeAllowedHtml,

@@ -1,6 +1,6 @@
 {
-  "name": "Odysseus-Lab",
-  "short_name": "Odysseus-Lab",
+  "name": "Odysseus - Lab",
+  "short_name": "Odysseus - Lab",
   "description": "Local AI agent and development laboratory",
   "start_url": "/",
   "scope": "/",
