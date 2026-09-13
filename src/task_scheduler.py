@@ -747,17 +747,20 @@ class TaskScheduler:
         _q_db = SessionLocal()
         try:
             from core.database import ScheduledTask
-            task_project_id = _q_db.query(ScheduledTask.project_id).filter(
+            queued_task = _q_db.query(ScheduledTask).filter(
                 ScheduledTask.id == task_id
-            ).scalar()
-            run = TaskRun(
+            ).first()
+            task_project_id = getattr(queued_task, "project_id", None)
+            run_kwargs = dict(
                 id=run_id,
                 task_id=task_id,
-                project_id=task_project_id,
                 started_at=_utcnow(),
                 status="queued",
                 result="Queued — waiting for a free slot…",
             )
+            if hasattr(TaskRun, "project_id"):
+                run_kwargs["project_id"] = task_project_id
+            run = TaskRun(**run_kwargs)
             _q_db.add(run)
             _q_db.commit()
         except Exception:
@@ -884,14 +887,16 @@ class TaskScheduler:
             else:
                 # Defensive: row may have been wiped; recreate so the rest of
                 # the code can look it up by run_id without crashing.
-                run = TaskRun(
+                run_kwargs = dict(
                     id=run_id,
                     task_id=task.id,
-                    project_id=getattr(task, "project_id", None),
                     started_at=_utcnow(),
                     status="running",
                     result="Starting…",
                 )
+                if hasattr(TaskRun, "project_id"):
+                    run_kwargs["project_id"] = getattr(task, "project_id", None)
+                run = TaskRun(**run_kwargs)
                 db.add(run)
                 db.commit()
 
@@ -1546,17 +1551,19 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Task] {task.name}",
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
-                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()
@@ -1734,17 +1741,19 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Task] {task.name}",
                 endpoint_url=endpoint_url or "",
                 model=model_name or "",
                 owner=task.owner,
-                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()
@@ -2103,17 +2112,19 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Research] {task.name}",
                 endpoint_url=endpoint_url,
                 model=model,
                 owner=task.owner,
-                project_id=getattr(task, "project_id", None),
                 folder="Tasks",
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()
