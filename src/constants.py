@@ -4,7 +4,13 @@ import os
 
 from src.runtime_paths import get_app_root, get_default_data_dir
 
-APP_VERSION = "1.0.3"
+PRODUCT_NAME = "Odysseus-Lab"
+APP_VERSION = "0.1.0"
+APP_DISTRIBUTION = "lab"
+REPOSITORY_URL = "https://github.com/RaCzKoViC/Odysseus-Lab"
+UPSTREAM_NAME = "Odysseus"
+UPSTREAM_VERSION = "1.0.3"
+UPSTREAM_REPOSITORY = "https://github.com/odysseus-dev/odysseus"
 
 # Base paths
 BASE_DIR = os.path.join(get_app_root(), "")

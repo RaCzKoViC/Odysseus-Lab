@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Read-only Foundation diagnostics for Odysseus-Lab."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit, urlunsplit
+from urllib.request import Request, urlopen
+
+
+ROOT = Path(__file__).resolve().parents[1]
+REQUIRED_CHECKS = {"python", "data", "app_health", "app_ready"}
+
+
+def safe_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        if not parsed.hostname:
+            return "<redacted>"
+        host = parsed.hostname
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path.rstrip("/"), "", ""))
+    except (TypeError, ValueError):
+        return "<redacted>"
+
+
+def result(name: str, status: str, detail: str, **meta: Any) -> dict[str, Any]:
+    return {"name": name, "status": status, "detail": detail, "meta": meta}
+
+
+def http_probe(name: str, url: str, timeout: float) -> dict[str, Any]:
+    display = safe_url(url)
+    try:
+        request = Request(url, headers={"User-Agent": "Odysseus-Lab-Doctor/0.1"})
+        with urlopen(request, timeout=timeout) as response:
+            code = int(getattr(response, "status", 0))
+        status = "ok" if 200 <= code < 400 else "down"
+        return result(name, status, f"HTTP {code}", url=display)
+    except HTTPError as exc:
+        return result(name, "down", f"HTTP {exc.code}", url=display)
+    except (URLError, TimeoutError, OSError, ValueError):
+        return result(name, "down", "unreachable", url=display)
+
+
+def python_check() -> dict[str, Any]:
+    version = sys.version_info
+    status = "ok" if version >= (3, 11) else "down"
+    return result(
+        "python",
+        status,
+        f"Python {version.major}.{version.minor}.{version.micro}",
+        supported=version >= (3, 11),
+    )
+
+
+def data_check(root: Path) -> dict[str, Any]:
+    configured = os.environ.get("ODYSSEUS_DATA_DIR")
+    path = Path(configured).expanduser() if configured else root / "data"
+    parent = path if path.exists() else path.parent
+    writable = parent.exists() and os.access(parent, os.W_OK)
+    return result(
+        "data",
+        "ok" if writable else "down",
+        "data directory is writable" if writable else "data directory is not writable",
+        path=str(path.resolve(strict=False)),
+        exists=path.exists(),
+    )
+
+
+def compose_check(root: Path, timeout: float) -> dict[str, Any]:
+    if shutil.which("docker") is None:
+        return result("compose", "disabled", "docker command not found")
+    try:
+        completed = subprocess.run(
+            ["docker", "compose", "config", "--quiet"],
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=max(5.0, timeout),
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return result("compose", "down", "docker compose validation failed")
+    return result(
+        "compose",
+        "ok" if completed.returncode == 0 else "down",
+        "configuration valid" if completed.returncode == 0 else "configuration invalid",
+    )
+
+
+def ollama_url() -> str:
+    configured = os.environ.get("OLLAMA_BASE_URL", "").strip()
+    if not configured:
+        return "http://127.0.0.1:11434/api/tags"
+    parsed = urlsplit(configured if "://" in configured else f"http://{configured}")
+    path = parsed.path.rstrip("/")
+    if path.endswith("/v1"):
+        path = path[:-3]
+    return urlunsplit((parsed.scheme or "http", parsed.netloc, f"{path}/api/tags", "", ""))
+
+
+def collect(root: Path, base_url: str, timeout: float) -> dict[str, Any]:
+    base = base_url.rstrip("/")
+    chroma_host = os.environ.get("CHROMADB_HOST", "127.0.0.1")
+    chroma_port = os.environ.get("CHROMADB_PORT", "8100")
+    searxng = os.environ.get("SEARXNG_INSTANCE", "http://127.0.0.1:8080").rstrip("/")
+
+    checks = [
+        python_check(),
+        data_check(root),
+        compose_check(root, timeout),
+        http_probe("app_health", f"{base}/api/health", timeout),
+        http_probe("app_ready", f"{base}/api/ready", timeout),
+        http_probe("app_runtime", f"{base}/api/runtime", timeout),
+        http_probe("ollama", ollama_url(), timeout),
+        http_probe("chromadb", f"http://{chroma_host}:{chroma_port}/api/v2/heartbeat", timeout),
+        http_probe("searxng", f"{searxng}/healthz", timeout),
+    ]
+    required_down = any(
+        item["name"] in REQUIRED_CHECKS and item["status"] != "ok" for item in checks
+    )
+    optional_down = any(
+        item["name"] not in REQUIRED_CHECKS and item["status"] == "down" for item in checks
+    )
+    overall = "down" if required_down else "degraded" if optional_down else "ok"
+    return {"product": "Odysseus-Lab", "version": "0.1", "overall": overall, "checks": checks}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, default=ROOT)
+    parser.add_argument(
+        "--base-url",
+        default=f"http://127.0.0.1:{os.environ.get('APP_PORT', '7000')}",
+    )
+    parser.add_argument("--timeout", type=float, default=2.0)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--strict", action="store_true")
+    args = parser.parse_args(argv)
+
+    report = collect(args.repo.resolve(), args.base_url, max(0.1, args.timeout))
+    if args.as_json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"Odysseus-Lab doctor: {report['overall']}")
+        for item in report["checks"]:
+            print(f"[{item['status'].upper():8}] {item['name']}: {item['detail']}")
+
+    if args.strict:
+        return 0 if report["overall"] == "ok" else 1
+    return 1 if report["overall"] == "down" else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

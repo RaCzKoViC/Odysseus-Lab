@@ -20,9 +20,11 @@ PUBLIC_GUIDES = {
     "attachments.md",
     "backup-restore.md",
     "email-outlook.md",
+    "operations.md",
     "pr-blocker-audit.md",
     "security-ci.md",
     "setup.md",
+    "upstream.md",
 }
 # Files a referenced image name could legitimately appear in.
 TEXT_EXTS = {".md", ".html", ".htm", ".js", ".ts", ".css", ".py", ".sh",

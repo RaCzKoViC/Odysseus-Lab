@@ -1,0 +1,7 @@
+# CI-only overlay. It validates the complete application stack while omitting
+# optional prebuilt Real-ESRGAN wheels that exceed a standard runner's disk.
+services:
+  odysseus:
+    build:
+      context: .
+      target: foundation-runtime

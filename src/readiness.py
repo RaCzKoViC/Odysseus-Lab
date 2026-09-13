@@ -8,8 +8,11 @@ for an orchestrator readiness probe (200 only when every critical check passes).
 
 import os
 import uuid
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 def check_readiness() -> Dict[str, object]:
@@ -30,8 +33,9 @@ def check_readiness() -> Dict[str, object]:
         with engine.connect() as conn:
             conn.execute(sql_text("SELECT 1"))
         checks["database"] = {"ok": True}
-    except Exception as e:
-        checks["database"] = {"ok": False, "error": str(e)}
+    except Exception as exc:
+        logger.warning("readiness database check failed: %s", type(exc).__name__)
+        checks["database"] = {"ok": False, "error": "database unavailable"}
 
     # Data directory present and writable — home must be able to hold its own data.
     try:
@@ -40,9 +44,10 @@ def check_readiness() -> Dict[str, object]:
         with open(probe, "w", encoding="utf-8") as fh:
             fh.write("ok")
         os.remove(probe)
-        checks["data_dir"] = {"ok": True, "path": DATA_DIR}
-    except Exception as e:
-        checks["data_dir"] = {"ok": False, "error": str(e)}
+        checks["data_dir"] = {"ok": True}
+    except Exception as exc:
+        logger.warning("readiness data directory check failed: %s", type(exc).__name__)
+        checks["data_dir"] = {"ok": False, "error": "data directory unavailable"}
 
     # Local-first: storage stays on the home machine (informational, never fatal).
     local_first = (
@@ -57,5 +62,5 @@ def check_readiness() -> Dict[str, object]:
         "ready": ready,
         "version": APP_VERSION,
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
