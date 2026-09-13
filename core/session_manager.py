@@ -149,6 +149,7 @@ class SessionManager:
             headers=headers,
             history=[],
             owner=getattr(db_session, "owner", None),
+            project_id=getattr(db_session, "project_id", None),
             is_important=getattr(db_session, "is_important", False) or False,
         )
         session.message_count = getattr(db_session, "message_count", 0) or 0
@@ -207,6 +208,7 @@ class SessionManager:
             headers=headers,
             history=history,
             owner=getattr(db_session, 'owner', None),
+            project_id=getattr(db_session, "project_id", None),
             is_important=getattr(db_session, 'is_important', False) or False,
         )
 
@@ -545,7 +547,8 @@ class SessionManager:
         endpoint_url: str,
         model: str,
         rag: bool = False,
-        owner: str = None
+        owner: str = None,
+        project_id: str = None,
     ) -> Session:
         """Create a new session and save to database."""
         db = SessionLocal()
@@ -558,6 +561,7 @@ class SessionManager:
                 rag=rag,
                 headers={},
                 owner=owner,
+                project_id=project_id,
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc)
             )
@@ -572,6 +576,7 @@ class SessionManager:
                 rag=rag,
                 headers={},
                 owner=owner,
+                project_id=project_id,
             )
 
             self.sessions[session_id] = session

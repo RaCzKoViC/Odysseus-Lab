@@ -172,6 +172,41 @@ class EncryptedText(TypeDecorator):
         return decrypt(value)
 
 
+class Project(TimestampMixin, Base):
+    """Owner-scoped container for related conversations and workspace state."""
+    __tablename__ = "projects"
+
+    id = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="active")
+    settings = Column(JSON, nullable=False, default=dict)
+    default_workspace_path = Column(String, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    sessions = relationship("Session", back_populates="project", passive_deletes=True)
+
+    __table_args__ = (
+        Index("ix_projects_owner_status", "owner", "status"),
+        Index("ix_projects_owner_name", "owner", "name"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "owner": self.owner,
+            "name": self.name,
+            "description": self.description or "",
+            "status": self.status,
+            "settings": self.settings or {},
+            "default_workspace_path": self.default_workspace_path,
+            "sort_order": self.sort_order or 0,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class Session(TimestampMixin, Base):
     """
     SQLAlchemy model for Session table.
@@ -187,6 +222,12 @@ class Session(TimestampMixin, Base):
     endpoint_url = Column(String, nullable=False)
     model = Column(String, nullable=False)
     owner = Column(String, nullable=True, index=True)  # username; null = legacy/shared
+    project_id = Column(
+        String,
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     
     # Configuration flags
     rag = Column(Boolean, default=False)
@@ -224,6 +265,7 @@ class Session(TimestampMixin, Base):
 
     # Relationship to chat messages
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    project = relationship("Project", back_populates="sessions")
     
     @property
     def is_active(self):
@@ -249,6 +291,7 @@ class Session(TimestampMixin, Base):
             'total_input_tokens': self.total_input_tokens or 0,
             'total_output_tokens': self.total_output_tokens or 0,
             'crew_member_id': self.crew_member_id,
+            'project_id': self.project_id,
         }
 
 class ChatMessage(Base):
@@ -1282,6 +1325,46 @@ def _migrate_add_folder_column():
         except Exception:
             pass
 
+
+def _migrate_project_core():
+    """Add nullable project linkage to existing session tables.
+
+    ``projects`` itself is created by ``Base.metadata.create_all``. Existing
+    sessions remain unassigned, preserving every pre-0.2 code path.
+    """
+    db_path = _sqlite_db_path(engine.url)
+    if db_path is None or not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys=ON")
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "project_id" not in columns:
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN project_id TEXT "
+                "REFERENCES projects(id) ON DELETE SET NULL"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_sessions_project_id "
+            "ON sessions(project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_sessions_owner_project "
+            "ON sessions(owner, project_id)"
+        )
+        conn.commit()
+    except Exception as exc:
+        if conn is not None:
+            conn.rollback()
+        logger.warning("Project Core migration failed: %s", exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def _migrate_add_token_columns():
     """Add cumulative token tracking columns to sessions table."""
     import sqlite3
@@ -2114,6 +2197,7 @@ def init_db():
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()
     _migrate_add_folder_column()
+    _migrate_project_core()
     _migrate_add_token_columns()
     _migrate_add_mode_column()
     _migrate_add_multiuser_owner_columns()
