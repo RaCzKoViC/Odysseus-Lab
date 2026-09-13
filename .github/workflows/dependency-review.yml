@@ -29,8 +29,10 @@ concurrency:
 jobs:
   dependency-review:
     name: dependency-review (PR gate)
-    # Only meaningful on a pull request -- it needs a base..head diff to review.
-    if: github.event_name == 'pull_request'
+    # The action requires Dependency Graph and GitHub Advanced Security for
+    # private repositories. Run the gate where GitHub supports it by default;
+    # pip-audit below remains active for private forks and mirrors.
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
