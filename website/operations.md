@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Odysseus-Lab operations
 
 This runbook covers the supported 0.1 Foundation path: a local Docker Compose
@@ -103,7 +107,7 @@ repository if it is shared with another deployment.
 ## Update
 
 Updates pull only the Lab `origin/main`. Upstream synchronization is a separate
-review process described in [`UPSTREAM.md`](UPSTREAM.md).
+review process described in [`upstream.md`](upstream.md).
 
 Linux/macOS Docker:
 

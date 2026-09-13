@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # Upstream synchronization
 
 Odysseus-Lab is maintained as a conservative distribution of
@@ -12,7 +16,8 @@ reviewed change, not an automatic update.
 - Feature and synchronization work happens on short-lived branches and enters
   `main` through pull requests.
 
-The initial imported baseline is recorded in [`UPSTREAM_BASE`](../UPSTREAM_BASE).
+The initial imported baseline is recorded in
+[`UPSTREAM_BASE`](https://github.com/RaCzKoViC/Odysseus-Lab/blob/main/UPSTREAM_BASE).
 
 ## One-time remote setup
 
@@ -46,7 +51,8 @@ git remote get-url upstream
 4. Prefer a normal merge from `upstream/main` when taking a complete stable
    release. Cherry-pick a `dev` commit only when its dependencies are understood.
 5. Resolve Lab identity and operations conflicts in favor of the compatibility
-   contract in [`FORK.md`](../FORK.md).
+   contract in
+   [`FORK.md`](https://github.com/RaCzKoViC/Odysseus-Lab/blob/main/FORK.md).
 6. Run the full Foundation validation and open a pull request.
 7. Update `UPSTREAM_BASE` only after the synchronization pull request passes.
 
