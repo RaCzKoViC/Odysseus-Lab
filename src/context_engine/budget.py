@@ -90,6 +90,9 @@ def shape_messages_for_route(
             model,
             fallback=fallback_context_length,
         )
+        if budget_context > 0:
+            context_length = int(budget_context)
+            known = True
         input_budget = budget_module.compute_input_token_budget(
             configured_soft_budget,
             budget_context,
