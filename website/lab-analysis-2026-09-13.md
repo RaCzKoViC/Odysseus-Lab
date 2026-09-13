@@ -1,8 +1,12 @@
+---
+layout: default
+---
+
 # Odysseus-Lab — analiza projektu i kierunki rozwoju
 
 Data: 2026-09-13 · Stan: `main` @ `a5fe38d` (Lab 0.2.2) · Upstream: Odysseus 1.0.3 (`dev` @ `9d5c031`, 2026-09-11)
 
-Dokument roboczy (nie jest specyfikacją w rozumieniu `specs/_readme.md`). Źródło prawdy o kodzie pozostaje w kodzie i w `specs/`.
+Dokument roboczy w katalogu `website/` (repo nie dopuszcza plików `.md` w `docs/`); nie jest specyfikacją w rozumieniu `specs/_readme.md`. Źródło prawdy o kodzie pozostaje w kodzie i w `specs/`.
 
 ## 1. Tożsamość projektu
 

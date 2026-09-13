@@ -72,6 +72,11 @@ export function createStreamRenderer(contentEl, { render, hljs } = {}) {
       appendOpenFence(tailText, fence);
       return;
     }
+    const late = tailText ? findLateOpenFence(tailText) : null;
+    if (late) {
+      appendLateOpenFence(tailText, late);
+      return;
+    }
     appendMode = null;
     clearTail();
     if (!tailText) {
@@ -85,51 +90,101 @@ export function createStreamRenderer(contentEl, { render, hljs } = {}) {
     while (holder.firstChild) contentEl.appendChild(holder.firstChild);
   }
 
+  // Build the streaming <pre class="code-block code-streaming"> (same header the
+  // finished block renders with in markdown.js, minus the tool buttons: the code
+  // is not final yet, so a pulsing dot stands in) and append it to the tail.
+  function createStreamingPre(lang) {
+    const pre = document.createElement('pre');
+    pre.className = 'code-block code-streaming';
+    const head = document.createElement('span');
+    head.className = 'code-head';
+    const langEl = document.createElement('span');
+    langEl.className = 'code-lang';
+    langEl.textContent = lang || 'code';
+    const tools = document.createElement('span');
+    tools.className = 'code-tools';
+    const dot = document.createElement('span');
+    dot.className = 'code-streaming-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    tools.appendChild(dot);
+    head.appendChild(langEl);
+    head.appendChild(tools);
+    pre.appendChild(head);
+    const code = document.createElement('code');
+    if (lang) code.className = `language-${lang}`;
+    const textNode = document.createTextNode('');
+    code.appendChild(textNode);
+    pre.appendChild(code);
+    contentEl.appendChild(pre);
+    return { codeText: textNode, appendedLen: 0, pre, lines: 1, collapsed: false, proseEnd: 0 };
+  }
+
+  // Append only the characters not yet shown; past CODE_COLLAPSE_LINES the block
+  // keeps writing inside the small frame with the newest line kept in view.
+  function appendCode(code) {
+    if (code.length <= appendMode.appendedLen) return;
+    const chunk = code.slice(appendMode.appendedLen);
+    appendMode.codeText.appendData(chunk);
+    appendMode.appendedLen = code.length;
+    for (let i = 0; i < chunk.length; i++) if (chunk.charCodeAt(i) === 10) appendMode.lines++;
+    if (!appendMode.collapsed && appendMode.lines > CODE_COLLAPSE_LINES) {
+      appendMode.collapsed = true;
+      appendMode.pre.classList.add('code-collapsed');
+    }
+    if (appendMode.collapsed) appendMode.pre.scrollTop = appendMode.pre.scrollHeight;
+  }
+
   // Stream the body of an unterminated code fence by appending only the new
   // characters to a stable <pre><code> text node — no re-parse, no re-highlight.
   function appendOpenFence(tailText, fence) {
-    if (!appendMode) {
+    if (!appendMode || appendMode.proseEnd !== 0) {
       clearTail();
-      const pre = document.createElement('pre');
-      pre.className = 'code-block code-streaming';
-      // Same header the finished block renders with (markdown.js), minus the
-      // tool buttons: the code is not final yet, so a pulsing dot stands in.
-      const head = document.createElement('span');
-      head.className = 'code-head';
-      const langEl = document.createElement('span');
-      langEl.className = 'code-lang';
-      langEl.textContent = fence.lang || 'code';
-      const tools = document.createElement('span');
-      tools.className = 'code-tools';
-      const dot = document.createElement('span');
-      dot.className = 'code-streaming-dot';
-      dot.setAttribute('aria-hidden', 'true');
-      tools.appendChild(dot);
-      head.appendChild(langEl);
-      head.appendChild(tools);
-      pre.appendChild(head);
-      const code = document.createElement('code');
-      if (fence.lang) code.className = `language-${fence.lang}`;
-      const textNode = document.createTextNode('');
-      code.appendChild(textNode);
-      pre.appendChild(code);
-      contentEl.appendChild(pre);
-      appendMode = { codeText: textNode, appendedLen: 0, pre, lines: 1, collapsed: false };
+      appendMode = createStreamingPre(fence.lang);
       tailShownLen = 0; // code is never faded; prose after the fence fades fresh
     }
-    const code = tailText.slice(fence.contentStart);
-    if (code.length > appendMode.appendedLen) {
-      const chunk = code.slice(appendMode.appendedLen);
-      appendMode.codeText.appendData(chunk);
-      appendMode.appendedLen = code.length;
-      for (let i = 0; i < chunk.length; i++) if (chunk.charCodeAt(i) === 10) appendMode.lines++;
-      if (!appendMode.collapsed && appendMode.lines > CODE_COLLAPSE_LINES) {
-        appendMode.collapsed = true;
-        appendMode.pre.classList.add('code-collapsed');
+    appendCode(tailText.slice(fence.contentStart));
+  }
+
+  // An open fence that starts AFTER some prose in the live tail. The segmenter
+  // (describeOpenFence) only recognises a fence at the very start of the tail, and
+  // it cannot freeze the prose in front until a following block proves the cut is
+  // render-safe — so without this the whole tail, code included, would re-render
+  // as paragraphs on every token. Returns { lang, proseEnd, contentStart } or null.
+  function findLateOpenFence(text) {
+    const re = /(^|\n)( {0,3})(`{3,}|~{3,})([^\n]*)\n/g;
+    let open = null;
+    let m;
+    while ((m = re.exec(text))) {
+      const marker = m[3];
+      const info = (m[4] || '').trim();
+      if (open) {
+        // A closing fence uses the same character, is at least as long, and has no info string.
+        if (marker[0] === open.marker[0] && marker.length >= open.marker.length && info === '') open = null;
+        continue;
       }
-      // Keep the newest line in view inside the small frame.
-      if (appendMode.collapsed) appendMode.pre.scrollTop = appendMode.pre.scrollHeight;
+      open = {
+        marker,
+        lang: info.split(/\s+/)[0] || '',
+        proseEnd: m.index + (m[1] ? 1 : 0),
+        contentStart: m.index + m[0].length,
+      };
     }
+    if (!open || open.proseEnd === 0) return null; // start-of-tail fences belong to describeOpenFence
+    return { lang: open.lang, proseEnd: open.proseEnd, contentStart: open.contentStart };
+  }
+
+  // Render the prose before the fence once, then stream the code into a frame.
+  function appendLateOpenFence(tailText, late) {
+    if (!appendMode || appendMode.proseEnd !== late.proseEnd) {
+      clearTail();
+      const holder = document.createElement('div');
+      holder.innerHTML = render(tailText.slice(0, late.proseEnd));
+      while (holder.firstChild) contentEl.appendChild(holder.firstChild);
+      appendMode = createStreamingPre(late.lang);
+      appendMode.proseEnd = late.proseEnd;
+      tailShownLen = 0;
+    }
+    appendCode(tailText.slice(late.contentStart));
   }
 
   // Wrap tail text past `prevLen` characters in <span class="token-new"> for the

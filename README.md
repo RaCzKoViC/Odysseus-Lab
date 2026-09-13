@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/branding/odysseus-wordmark.png" alt="Odysseus" width="238">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/odysseus-lab-wordmark-dark.png">
+    <img src="assets/branding/odysseus-lab-wordmark-light.png" alt="Odysseus - Lab" width="360">
+  </picture>
 </p>
 
 <p align="center">
@@ -17,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/branding/odysseus-browser.jpg" alt="Odysseus interface">
+  <img src="assets/branding/odysseus-lab-browser.jpg" alt="Odysseus - Lab desktop on the Liquid Glass theme">
 </p>
 
 ---
@@ -51,7 +54,7 @@ Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and syntax highlighting.
 - **Email** — IMAP/SMTP inbox with triage, tags, summaries, reminders, and reply drafts.
 - **Notes, Tasks + Calendar** — reminders, todos, scheduled agent tasks, and CalDAV sync.
-- **Extras** — gallery/image editor, themes, uploads, web search, presets, sessions, and 2FA.
+- **Extras** — gallery/image editor, themes (including the Lab's **Liquid Glass** glass-and-wallpaper look), uploads with in-chat previews, web search, presets, sessions, and 2FA.
 
 ## Demo
 
