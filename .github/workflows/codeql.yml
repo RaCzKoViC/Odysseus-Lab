@@ -1,12 +1,13 @@
 name: CodeQL
 
-# Advanced setup so CodeQL also runs on pull requests (including from forks),
-# surfacing findings before merge instead of only after a change lands on dev.
+# Advanced setup so CodeQL also runs on pull requests (including from forks).
+# Private repositories require GitHub Advanced Security. Set the repository
+# variable ODYSSEUS_ENABLE_CODEQL=true after enabling GHAS to opt back in.
 on:
   push:
     branches: [dev, main]
   pull_request:
-    branches: [dev]
+    branches: [main]
   schedule:
     - cron: "17 3 * * 1"
 
@@ -16,6 +17,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    if: github.event.repository.private == false || vars.ODYSSEUS_ENABLE_CODEQL == 'true'
     runs-on: ubuntu-latest
     permissions:
       security-events: write

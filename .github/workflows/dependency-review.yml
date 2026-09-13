@@ -8,8 +8,8 @@
 #     dependencies before and after the PR and blocks the merge if the change
 #     pulls in a package with a known security advisory. This is the gate.
 #   - pip-audit: scans the project's current Python requirements against the
-#     advisory database. Advisory only (it never blocks a merge), because it can
-#     flag a pre-existing issue in an already-shipped dependency.
+#     advisory database. It is the blocking substitute in private repositories,
+#     where GitHub's dependency-review API requires Advanced Security.
 
 name: Dependency review
 
@@ -49,10 +49,11 @@ jobs:
           fail-on-severity: moderate
 
   pip-audit:
-    name: pip-audit (advisory)
+    name: pip-audit (private gate / public advisory)
     runs-on: ubuntu-latest
-    # Advisory: report known-vulnerable Python deps without blocking the merge.
-    continue-on-error: true
+    # Public upstream keeps this advisory because dependency-review is the gate.
+    # Private forks use it as their blocking supply-chain check.
+    continue-on-error: ${{ github.event.repository.private == false }}
     permissions:
       contents: read
     steps:
