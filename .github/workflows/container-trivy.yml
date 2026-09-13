@@ -123,6 +123,10 @@ jobs:
           TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
 
       - name: Upload Trivy results
+        # Private repositories need GitHub Advanced Security for code-scanning
+        # uploads. Keep the scan itself active, but skip this unsupported write
+        # until GHAS is enabled and the same opt-in used by CodeQL is set.
+        if: github.event.repository.private == false || vars.ODYSSEUS_ENABLE_CODEQL == 'true'
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd  # v4.37.7
         with:
           sarif_file: trivy-results.sarif
