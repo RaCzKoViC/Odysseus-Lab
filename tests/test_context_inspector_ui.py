@@ -41,6 +41,8 @@ def test_context_inspector_exposes_only_honest_actions():
     assert "Compact conversation" in source
     assert "Open Memory" in source
     assert "Agent settings" in source
+    assert "Schemas" in source
+    assert "Route" in source
     for unsupported in ("Remove block", "Trust override", "Lock block"):
         assert unsupported not in source
 

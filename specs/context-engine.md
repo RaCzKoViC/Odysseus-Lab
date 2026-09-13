@@ -58,6 +58,19 @@ Budget output distinguishes the configured value, explicit versus automatic
 mode, hard maximum, and current effective soft budget. Counts remain marked
 `heuristic` unless provider usage explicitly reports real values.
 
+## 0.3.1 Unified Route Budget
+
+`src/context_engine/budget.py` is the single route allocator used by normal
+chat, foreground chat fallbacks, and agent routes. It resolves each concrete
+model window, preserves the conservative unknown-window budget, reserves output
+tokens, estimates native/MCP tool schema overhead, calls the established
+`trim_for_context` implementation, and returns one `RouteBudgetPlan`.
+
+Fallback candidates are still shaped independently from the same route-neutral
+messages. Compaction remains non-persistent until a winning route is known.
+Agent rounds invoke the allocator again as tool results grow, and metrics persist
+the answering route's allocation plan for the next Context Inspector request.
+
 ## API
 
 ```text
@@ -86,8 +99,10 @@ not exposed because no stable mutable block API exists yet.
 
 - 0.3.0 reconstructs evidence from persisted history and latest assistant
   metadata; it does not capture the exact provider payload.
-- Tool and MCP schema sizes are not yet part of the ledger.
-- Chat and agent still have separate budget/compaction shaping.
+- Tool and MCP schemas are estimated rather than provider-tokenized; schema
+  selection reduction is a later policy step when schemas alone exceed budget.
+- Chat and agent share one allocator, while compaction orchestration remains in
+  their existing route owners.
 - Project RAG and skills isolation is not implemented.
 - Context items are read-only until later 0.3 slices introduce stable block
   identities and mutation policy.
