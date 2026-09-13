@@ -31,6 +31,11 @@ def _sanitize_export_filename(name: str) -> str:
     return name[:128]
 
 
+def _optional_text(value) -> str:
+    """Normalize optional request values without trusting direct-call mocks."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 # Blind-compare helper sessions are created with this name prefix. Their real
 # model must never surface in the session list / sidebar — otherwise a blind
 # comparison can be de-anonymized before the user votes (issue #1285).
@@ -250,7 +255,9 @@ def setup_session_routes(
     @router.get("/sessions")
     def list_sessions(request: Request):
         user = effective_user(request)
-        project_filter_value = str(request.query_params.get("project_id") or "").strip()
+        project_filter_value = _optional_text(
+            request.query_params.get("project_id")
+        )
         active_incognito_id = str(request.query_params.get("active_incognito_id") or "").strip()
         # Lazy purge: incognito sessions are ephemeral by design — wipe leftovers
         # from the DB and session_manager so they vanish on the next page refresh.
@@ -479,7 +486,8 @@ def setup_session_routes(
         sid = str(uuid.uuid4())
         user = effective_user(request)
         normalized_project_id = None
-        if project_id and project_id.strip():
+        project_id_value = _optional_text(project_id)
+        if project_id_value:
             from src.owner_identity import effective_storage_owner
             from src.project_scope import get_owned_project
             project_owner = effective_storage_owner(user)
@@ -487,7 +495,7 @@ def setup_session_routes(
                 raise HTTPException(401, "Authentication required")
             project_db = SessionLocal()
             try:
-                project = get_owned_project(project_db, project_owner, project_id.strip())
+                project = get_owned_project(project_db, project_owner, project_id_value)
                 normalized_project_id = project.id
             finally:
                 project_db.close()
@@ -986,7 +994,8 @@ def setup_session_routes(
         sid = str(uuid.uuid4())
         user = effective_user(request)
         normalized_project_id = None
-        if project_id and project_id.strip():
+        project_id_value = _optional_text(project_id)
+        if project_id_value:
             from src.owner_identity import effective_storage_owner
             from src.project_scope import get_owned_project
             project_owner = effective_storage_owner(user)
@@ -995,7 +1004,7 @@ def setup_session_routes(
             project_db = SessionLocal()
             try:
                 normalized_project_id = get_owned_project(
-                    project_db, project_owner, project_id.strip()
+                    project_db, project_owner, project_id_value
                 ).id
             finally:
                 project_db.close()
