@@ -1,17 +1,18 @@
-# Contributing to Odysseus
+# Contributing to Odysseus-Lab
 
 Thanks for helping. The project is moving quickly, so the best contributions are focused, easy to review, and easy to test.
 
 ## Branch model
 
-Odysseus has two branches:
+Odysseus-Lab uses a protected trunk model:
 
-- **`dev`** — where all PRs land. Things can be in flux here; the merge button gets used freely.
-- **`main`** — what users run. Curated and tested by the maintainer. Fast-forwarded to a stable `dev` commit at each release.
+- **`main`** — the integration and release branch. All pull requests target it.
+- **feature branches** — short-lived branches for one focused change.
+- **`upstream/main` / `upstream/dev`** — read-only Odysseus references; see
+  [`docs/UPSTREAM.md`](docs/UPSTREAM.md).
 
-**Open your PR against `dev`, not `main`.** The GitHub "base" dropdown defaults to `dev`. If you opened a PR against `main` by accident, click "Edit" on the PR and change the base — no rebase needed.
-
-End-users cloning the repo will land on `dev` by default. To run the curated/stable version: `git checkout main` after clone.
+**Open your PR against `main`.** Upstream synchronization belongs in a separate
+pull request and must never be mixed with a Lab feature.
 
 ## Before You Start
 
@@ -25,8 +26,8 @@ End-users cloning the repo will land on `dev` by default. To run the curated/sta
 Docker is the recommended path for normal testing:
 
 ```bash
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 cp .env.example .env
 docker compose up -d --build
 ```
@@ -40,7 +41,16 @@ pip install -r requirements.txt
 python -m uvicorn app:app --host 127.0.0.1 --port 7000
 ```
 
-Windows is not actively tested. Docker on Linux or a Linux/macOS manual install is the safer path for now.
+Windows Foundation paths are checked in CI. Docker remains the recommended
+full-stack installation on Windows, Linux, and macOS.
+
+## Upstream-compatible changes
+
+Keep Lab changes additive and narrow. Avoid broad edits to the main conflict
+hotspots: `app.py`, `static/app.js`, `src/llm_core.py`, and database migrations.
+Do not rename `ODYSSEUS_*` variables, `odysseus-*` commands, persistent browser
+keys, Docker service names, data paths, or Chroma collections without a
+documented migration and regression tests.
 
 ## Running Checks
 
