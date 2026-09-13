@@ -32,6 +32,7 @@ import { UI_VIS_DEFAULT_OFF, resolveVisibility } from './js/ui_visibility.js';
 import tasksModule from './js/tasks.js?v=20260723tasksbulkfeedback1';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
+import projectModule from './js/projects.js?v=20260913projectcore1';
 import adminModule from './js/admin.js?v=20260716openrouter3';
 import settingsModule from './js/settings.js?v=20260815approvalsave1';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
@@ -60,6 +61,7 @@ window.sessionModule = sessionModule;
 window.uiModule = uiModule;
 window.adminModule = adminModule;
 window.cookbookModule = cookbookModule;
+window.projectModule = projectModule;
 
 function _isMobileChatInput() {
   return window.innerWidth <= 768;
@@ -178,6 +180,7 @@ function initRailHoverLabels() {
     'rail-archive': 'Library',
     'rail-memory': 'Brain',
     'rail-notes': 'Notes',
+    'rail-projects': 'Projects',
     'rail-tasks': 'Tasks',
     'rail-theme': 'Theme',
     'rail-settings': 'Settings',
@@ -1221,10 +1224,14 @@ function initializeEventListeners() {
     },
     '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
+    '/projects': () => projectModule?.openProjects?.(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
   };
-  const _opener = _routeOpen[urlPath];
+  const _projectRoute = urlPath.match(/^\/projects\/([0-9a-f-]+)$/i);
+  const _opener = _projectRoute
+    ? () => projectModule?.openProjects?.(_projectRoute[1])
+    : _routeOpen[urlPath];
   // Defer the opener — at this point in init, the modules whose handlers we
   // trigger (#rail-new-session click handler, the email-section header click
   // handler in emailInbox, sessionModule) are still being wired up further
@@ -3663,6 +3670,7 @@ function startOdysseusApp() {
   tasksModule?.startNotificationPolling?.();
   if (window.__odysseusAppStarted) return;
   window.__odysseusAppStarted = true;
+  projectModule?.initProjectCore?.({ sessionModule, uiModule });
   const _bumpChatPriority = (ms = 10000) => {
     try {
       window.__odysseusChatBusyUntil = Math.max(window.__odysseusChatBusyUntil || 0, Date.now() + ms);
@@ -3746,6 +3754,7 @@ function startOdysseusApp() {
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
+    'rail-projects':  'tool-projects-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-email':     'email-section-title',
   };
