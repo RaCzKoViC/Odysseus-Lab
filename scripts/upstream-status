@@ -13,6 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
@@ -47,11 +48,26 @@ def _ref_status(root: Path, branch: str) -> dict[str, Any]:
     }
 
 
+def _safe_remote_url(value: str) -> str:
+    """Remove credentials added by local Git URL rewriting."""
+    try:
+        parsed = urlsplit(value)
+        if not parsed.hostname:
+            return value
+        host = parsed.hostname
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, parsed.fragment))
+    except (TypeError, ValueError):
+        return "<redacted>"
+
+
 def collect(root: Path) -> dict[str, Any]:
     baseline_path = root / "UPSTREAM_BASE"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    remote_url = _git(root, "remote", "get-url", "upstream", check=False)
-    configured = bool(remote_url)
+    raw_remote_url = _git(root, "remote", "get-url", "upstream", check=False)
+    configured = bool(raw_remote_url)
+    remote_url = _safe_remote_url(raw_remote_url) if configured else ""
 
     return {
         "ok": configured,

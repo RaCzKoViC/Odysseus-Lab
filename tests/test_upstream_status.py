@@ -25,6 +25,7 @@ def test_upstream_status_is_read_only_and_reports_json():
     assert payload["baseline"]["commit"] == "9d5c0319149bfb69ce22a35f37cf17debaa5f14b"
     assert payload["baseline"]["branch"] == "dev"
     assert [item["branch"] for item in payload["upstream"]["refs"]] == ["main", "dev"]
+    assert "@" not in (payload["upstream"]["url"] or "")
 
 
 def test_upstream_base_is_machine_readable():
