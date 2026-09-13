@@ -28,7 +28,7 @@ import argparse, json, logging, os, shutil, sqlite3, subprocess, sys, tarfile, t
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
-_DATA_DIR = _REPO_ROOT / "data"
+_DATA_DIR = Path(os.getenv("ODYSSEUS_BACKUP_DATA_DIR") or (_REPO_ROOT / "data")).expanduser()
 _BACKUP_DIR = _REPO_ROOT / "backups"
 
 # Stuff inside data/ that we explicitly skip — anything we can re-derive
@@ -100,7 +100,9 @@ def cmd_snapshot(args):
             for p in sorted(_DATA_DIR.rglob("*")):
                 if not p.is_file() or p.is_symlink():
                     continue
-                rel = p.relative_to(_DATA_DIR.parent)
+                # The archive root stays "data/" even when a Compose deployment
+                # bind-mounts a custom host directory.
+                rel = Path("data") / p.relative_to(_DATA_DIR)
                 # Skip user-asked-to-skip categories
                 if not args.include_research and "deep_research" in rel.parts:
                     continue
@@ -220,17 +222,29 @@ def cmd_restore(args):
     # `data/`. Avoid extractall() so symlink/hardlink entries can't redirect a
     # later write outside the repo.
     stash = None
+    _DATA_DIR.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "r:gz") as tar:
         members = tar.getmembers()
         _validate_restore_members(members)
-        # Save a safety copy of current data/ before extracting.
-        if _DATA_DIR.exists() or _DATA_DIR.is_symlink():
-            stash = _REPO_ROOT / f"data.before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-            os.rename(_DATA_DIR, stash)
-        try:
-            _extract_restore_members(tar, members, _REPO_ROOT)
-        except Exception as e:
-            fail(f"extract failed: {e}")
+        # Extract and validate completely before replacing live state.
+        with tempfile.TemporaryDirectory(prefix=".odysseus-restore-", dir=_DATA_DIR.parent) as tmp:
+            staging_root = Path(tmp)
+            try:
+                _extract_restore_members(tar, members, staging_root)
+                staged_data = staging_root / "data"
+                if not staged_data.is_dir():
+                    fail("extract failed: archive did not produce data/")
+                if _DATA_DIR.exists() or _DATA_DIR.is_symlink():
+                    stash = _DATA_DIR.parent / (
+                        f"{_DATA_DIR.name}.before-restore-"
+                        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+                    )
+                    os.rename(_DATA_DIR, stash)
+                os.replace(staged_data, _DATA_DIR)
+            except Exception as e:
+                if stash and stash.exists() and not _DATA_DIR.exists():
+                    os.rename(stash, _DATA_DIR)
+                fail(f"extract failed: {e}")
     emit({
         "ok": True,
         "restored_from": str(path),

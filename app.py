@@ -65,6 +65,8 @@ from starlette.middleware.gzip import GZipMiddleware
 from core.constants import (
     BASE_DIR, STATIC_DIR, SESSIONS_FILE,
     REQUEST_TIMEOUT, OPENAI_API_KEY, AUTH_FILE,
+    PRODUCT_NAME, APP_VERSION, APP_DISTRIBUTION,
+    REPOSITORY_URL, UPSTREAM_NAME, UPSTREAM_VERSION, UPSTREAM_REPOSITORY,
 )
 from core.database import SessionLocal, ApiToken
 from core.middleware import (
@@ -126,9 +128,9 @@ logger = logging.getLogger(__name__)
 # and passed to FastAPI so we can use the modern context-manager lifecycle
 # instead of the deprecated @app.on_event("startup"/"shutdown") decorators.
 app = FastAPI(
-    title="AI Chat Application",
-    description="Comprehensive AI chat with memory, research, and multi-modal capabilities",
-    version="1.0.0",
+    title=PRODUCT_NAME,
+    description="Local AI agent and development laboratory",
+    version=APP_VERSION,
 )
 
 # ========= CORS =========
@@ -271,6 +273,7 @@ if AUTH_ENABLED:
         "/api/auth/settings",
         "/api/auth/integrations/presets",
         "/api/health",
+        "/api/ready",
         "/api/version",
         "/login",
     }
@@ -806,6 +809,9 @@ app.include_router(setup_cookbook_routes())
 from routes.workspace_routes import setup_workspace_routes
 app.include_router(setup_workspace_routes())
 
+from routes.project import setup_project_routes
+app.include_router(setup_project_routes(memory_manager, memory_vector))
+
 # Hardware model fitting (cookbook "What Fits?" tab)
 from routes.hwfit_routes import setup_hwfit_routes
 app.include_router(setup_hwfit_routes())
@@ -936,6 +942,12 @@ async def serve_tasks(request: Request):
 async def serve_library(request: Request):
     return await serve_index(request)
 
+
+@app.get("/projects")
+@app.get("/projects/{project_id}")
+async def serve_projects(request: Request, project_id: str = ""):
+    return await serve_index(request)
+
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):
     """Sandbox page for prototyping background effects. No auth required."""
@@ -949,8 +961,17 @@ async def serve_login(request: Request):
 
 @app.get("/api/version")
 async def get_version():
-    from core.constants import APP_VERSION
-    return {"version": APP_VERSION}
+    return {
+        "version": APP_VERSION,
+        "product": PRODUCT_NAME,
+        "distribution": APP_DISTRIBUTION,
+        "repository": REPOSITORY_URL,
+        "upstream": {
+            "name": UPSTREAM_NAME,
+            "version": UPSTREAM_VERSION,
+            "repository": UPSTREAM_REPOSITORY,
+        },
+    }
 
 @app.get("/api/health")
 async def health_check() -> Dict[str, str]:

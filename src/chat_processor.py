@@ -310,7 +310,22 @@ class ChatProcessor:
         # Memory: core pinned facts + relevant pinned/extended recall.
         self._last_used_memories = []  # track what was injected
         if use_memory:
-            mem_entries = self.memory_manager.load(owner=owner)
+            from src.project_scope import resolve_project_memory_scope
+
+            project_id, memory_mode = resolve_project_memory_scope(
+                owner,
+                getattr(session, "project_id", None),
+            )
+            if project_id is None and memory_mode == "inherit":
+                # Preserve the historical adapter contract for custom/test
+                # memory managers that only accept ``owner``.
+                mem_entries = self.memory_manager.load(owner=owner)
+            else:
+                mem_entries = self.memory_manager.load(
+                    owner=owner,
+                    project_id=project_id,
+                    mode=memory_mode,
+                )
 
             pinned = [m for m in mem_entries if m.get("pinned")]
             extended = [m for m in mem_entries if not m.get("pinned")]

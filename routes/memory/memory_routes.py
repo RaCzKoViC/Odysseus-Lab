@@ -70,6 +70,26 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         if user is not None and getattr(session_obj, "owner", None) != user:
             raise HTTPException(404, "Session not found")
 
+    def _project_scope(user, project_id):
+        value = project_id.strip() if isinstance(project_id, str) else ""
+        if not value:
+            return None, "inherit"
+        from src.owner_identity import effective_storage_owner
+        from src.project_scope import get_owned_project
+
+        owner = effective_storage_owner(user)
+        if not owner:
+            raise HTTPException(401, "Authentication required")
+        db = SessionLocal()
+        try:
+            project = get_owned_project(db, owner, value, include_archived=True)
+            mode = str((project.settings or {}).get("memory_mode") or "inherit")
+            if mode not in {"inherit", "project_only", "project_plus_global"}:
+                mode = "inherit"
+            return project.id, mode
+        finally:
+            db.close()
+
     def _verify_memory_owner(memory: dict, user: Optional[str]):
         """Raise 404 if user doesn't own this memory.
 
@@ -111,16 +131,15 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
                 text=form.get("text"),
                 category=form.get("category", "fact"),
                 source=form.get("source", "user"),
-                session_id=form.get("session_id")
+                session_id=form.get("session_id"),
+                project_id=form.get("project_id"),
             )
 
         user = _owner(request)
+        requested_project_id = memory_data.project_id
         text = (memory_data.text or "").strip()
         if not text:
             raise HTTPException(400, "empty memory")
-        user_mem = memory_manager.load(owner=user)
-        if memory_manager.find_duplicates(text, user_mem):
-            return {"ok": True, "count": len(user_mem), "message": "Memory already exists"}
 
         if memory_data.session_id:
             try:
@@ -128,8 +147,27 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             except KeyError:
                 raise HTTPException(404, "Session not found")
             _assert_session_owner(session_obj, user)
+            session_project_id = getattr(session_obj, "project_id", None)
+            if requested_project_id and session_project_id != requested_project_id:
+                raise HTTPException(400, "Memory project does not match session project")
+            requested_project_id = session_project_id or requested_project_id
 
-        new_entry = memory_manager.add_entry(text, memory_data.source, memory_data.category, owner=user)
+        project_id, memory_mode = _project_scope(user, requested_project_id)
+        user_mem = memory_manager.load(
+            owner=user,
+            project_id=project_id,
+            mode=memory_mode,
+        )
+        if memory_manager.find_duplicates(text, user_mem):
+            return {"ok": True, "count": len(user_mem), "message": "Memory already exists"}
+
+        new_entry = memory_manager.add_entry(
+            text,
+            memory_data.source,
+            memory_data.category,
+            owner=user,
+            project_id=project_id,
+        )
         if memory_data.session_id:
             new_entry["session_id"] = memory_data.session_id
         all_mem = _load_for_update(memory_manager)
@@ -137,25 +175,64 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         memory_manager.save(all_mem)
         # Sync vector index
         if memory_vector and memory_vector.healthy:
-            memory_vector.add(new_entry["id"], text)
+            memory_vector.add(
+                new_entry["id"],
+                text,
+                owner=user,
+                project_id=project_id,
+            )
         try:
             from src.event_bus import fire_event
             fire_event("memory_added", user)
         except Exception:
             logger.debug("memory_added event dispatch failed", exc_info=True)
-        return {"ok": True, "count": len([m for m in all_mem if m.get("owner") == user])}
+        return {
+            "ok": True,
+            "count": len(memory_manager.load(
+                owner=user,
+                project_id=project_id,
+                mode=memory_mode,
+            )),
+            "project_id": project_id,
+        }
 
     @router.get("")
-    def api_get_memory(request: Request):
+    def api_get_memory(
+        request: Request,
+        project_id: Optional[str] = None,
+        owned_only: bool = False,
+    ):
         """Return all memory entries with their metadata."""
         user = _owner(request)
-        return {"memory": memory_manager.load(owner=user)}
+        project_id, memory_mode = _project_scope(user, project_id)
+        load_mode = "project_only" if project_id and owned_only else memory_mode
+        return {
+            "memory": memory_manager.load(
+                owner=user,
+                project_id=project_id,
+                mode=load_mode,
+            ),
+            "project_id": project_id,
+            "memory_mode": memory_mode,
+            "view": "project_owned" if project_id and owned_only else "effective",
+        }
 
     @router.post("/search")
-    def search_memories(request: Request, query: str = Form(...), session_id: str = Form(None), category: str = Form(None)):
+    def search_memories(
+        request: Request,
+        query: str = Form(...),
+        session_id: str = Form(None),
+        category: str = Form(None),
+        project_id: str = Form(None),
+    ):
         """Search across all memories with optional filters."""
         user = _owner(request)
-        memories = memory_manager.load(owner=user)
+        project_id, memory_mode = _project_scope(user, project_id)
+        memories = memory_manager.load(
+            owner=user,
+            project_id=project_id,
+            mode=memory_mode,
+        )
 
         if session_id:
             memories = [m for m in memories if m.get("session_id") == session_id]

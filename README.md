@@ -3,18 +3,17 @@
 </p>
 
 <p align="center">
-  A self-hosted AI workspace for chat, agents, research, documents, email, notes, calendar, and local model workflows.
+  <strong>Odysseus-Lab — Build. Research. Automate.</strong><br>
+  A local-first AI agent and development laboratory.
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="website/setup.md">Setup Guide</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="ROADMAP.md">Roadmap</a>
-</p>
-
-<p align="center">
-  <a href="https://repology.org/project/odysseus-ai/versions"><img src="https://repology.org/badge/vertical-allrepos/odysseus-ai.svg" alt="Packaging status"></a>
+  <a href="ROADMAP.md">Roadmap</a> ·
+  <a href="FORK.md">Fork &amp; Upstream</a> ·
+  <a href="website/operations.md">Operations</a>
 </p>
 
 <p align="center">
@@ -23,13 +22,18 @@
 
 ---
 
+> **Fork status:** Odysseus-Lab is an independently maintained, upstream-compatible
+> distribution based on [Odysseus](https://github.com/odysseus-dev/odysseus).
+> Internal command names, environment variables, and data formats remain compatible
+> so installations can exchange data and selected upstream changes safely.
+
 ## Quick Start
 
-> `dev` is the default branch and gets the newest changes first. Use [`main`](https://github.com/odysseus-dev/odysseus/tree/main) if you want the more curated branch.
+`main` is the integration and release branch for Odysseus-Lab.
 
 ```bash
-git clone https://github.com/odysseus-dev/odysseus.git
-cd odysseus
+git clone https://github.com/RaCzKoViC/Odysseus-Lab.git
+cd Odysseus-Lab
 cp .env.example .env
 docker compose up -d --build
 ```
@@ -51,11 +55,13 @@ Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration
 
 ## Demo
 
-A full hover-to-play tour lives on the [Odysseus landing page](https://odysseus-dev.github.io/odysseus/). Its source lives under [`website/`](website/).
+A full hover-to-play tour is included under [`website/`](website/). GitHub Pages
+publishing is intentionally disabled while this repository remains private.
 
 ## Contributing
 
-Help is welcome. The best entry points are fresh-install testing, provider setup bugs, mobile/editor polish, docs, and small focused refactors. See [CONTRIBUTING.md](CONTRIBUTING.md) and [ROADMAP.md](ROADMAP.md).
+Help is welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), [ROADMAP.md](ROADMAP.md),
+and the [upstream synchronization policy](website/upstream.md).
 
 ## Security
 
@@ -66,16 +72,8 @@ Odysseus is a self-hosted workspace with powerful local tools. Keep auth enabled
 
 Deployment details are in the [setup guide](website/setup.md#security-notes).
 
-## Star History
-
-<a href="https://star-history.dera.page/#odysseus-dev/odysseus&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=odysseus-dev/odysseus&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=odysseus-dev/odysseus&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=odysseus-dev/odysseus&type=date&legend=top-left" />
- </picture>
-</a>
-
 ## License
 
-AGPL-3.0-or-later -- see [LICENSE](LICENSE) and [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+AGPL-3.0-or-later. See [LICENSE](LICENSE), [FORK.md](FORK.md), and
+[ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md). Operators who make a modified version
+available over a network must comply with the AGPL source-availability terms.

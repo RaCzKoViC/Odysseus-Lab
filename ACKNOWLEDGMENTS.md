@@ -1,5 +1,11 @@
 # Acknowledgments
 
+Odysseus-Lab is based on
+[Odysseus](https://github.com/odysseus-dev/odysseus), imported from commit
+`9d5c0319149bfb69ce22a35f37cf17debaa5f14b`. The upstream authors and
+contributors retain copyright in their work. Odysseus-Lab modifications are
+distributed under the same AGPL-3.0-or-later license; see [`FORK.md`](FORK.md).
+
 Odysseus stands on the shoulders of a lot of open-source work. This file
 credits the projects whose code, assets, or designs are included in or
 adapted by this repository, and notes their licenses.
@@ -48,8 +54,8 @@ just composed.
 | Service | Image | Purpose | License |
 |---|---|---|---|
 | [SearXNG](https://github.com/searxng/searxng) | `searxng/searxng:2026.5.31-7159b8aed` (pinned tag; see compose) | Default metasearch backend | AGPL-3.0 |
-| [ChromaDB](https://github.com/chroma-core/chroma) | `chromadb/chroma:latest` | Vector store for memory / RAG | Apache-2.0 |
-| [ntfy](https://github.com/binwiederhier/ntfy) | `binwiederhier/ntfy` | Push notifications (self-hosted reminders) | Apache-2.0 / GPL-2.0 |
+| [ChromaDB](https://github.com/chroma-core/chroma) | `chromadb/chroma@sha256:1e0b73a…` | Vector store for memory / RAG | Apache-2.0 |
+| [ntfy](https://github.com/binwiederhier/ntfy) | `binwiederhier/ntfy@sha256:6ef4b81…` | Push notifications (self-hosted reminders) | Apache-2.0 / GPL-2.0 |
 
 ## Bundled front-end libraries
 

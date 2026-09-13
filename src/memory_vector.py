@@ -101,7 +101,13 @@ class MemoryVectorStore:
 
         return collections
 
-    def add(self, memory_id: str, text: str):
+    def add(
+        self,
+        memory_id: str,
+        text: str,
+        owner: str = None,
+        project_id: str = None,
+    ):
         """Add a single memory entry to the vector index."""
         if not self._healthy:
             return
@@ -110,11 +116,16 @@ class MemoryVectorStore:
                 existing = lane.collection.get(ids=[memory_id])
                 if existing["ids"]:
                     continue
+                metadata = {"source": "memory"}
+                if owner:
+                    metadata["owner"] = owner
+                if project_id:
+                    metadata["project_id"] = project_id
                 lane.collection.add(
                     ids=[memory_id],
                     embeddings=lane.encode([text]),
                     documents=[text],
-                    metadatas=[{"source": "memory"}],
+                    metadatas=[metadata],
                 )
             except Exception as e:
                 logger.warning("memory add failed in %s lane for %s: %s", lane.name, memory_id, e)
@@ -214,12 +225,19 @@ class MemoryVectorStore:
 
         texts = []
         ids = []
+        metadata_rows = []
         for mem in memories:
             text = mem.get("text", "").strip()
             mid = mem.get("id", "")
             if text and mid:
                 texts.append(text)
                 ids.append(mid)
+                metadata = {"source": "memory"}
+                if mem.get("owner"):
+                    metadata["owner"] = mem["owner"]
+                if mem.get("project_id"):
+                    metadata["project_id"] = mem["project_id"]
+                metadata_rows.append(metadata)
 
         if texts:
             # Batch in chunks of 100 to avoid oversized requests
@@ -227,6 +245,7 @@ class MemoryVectorStore:
             for i in range(0, len(texts), 100):
                 batch_texts = texts[i:i + 100]
                 batch_ids = ids[i:i + 100]
+                batch_metadata = metadata_rows[i:i + 100]
                 for lane in self._lanes:
                     if lane.name in failed_lanes:
                         continue
@@ -235,7 +254,7 @@ class MemoryVectorStore:
                             ids=batch_ids,
                             embeddings=lane.encode(batch_texts),
                             documents=batch_texts,
-                            metadatas=[{"source": "memory"}] * len(batch_ids),
+                            metadatas=batch_metadata,
                         )
                     except Exception as e:
                         failed_lanes.add(lane.name)

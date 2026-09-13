@@ -39,6 +39,7 @@ class MemoryAddRequest(BaseModel):
     category: str = Field(default="fact", description="Memory category")
     source: str = Field(default="user", description="Memory source")
     session_id: Optional[str] = Field(default=None, description="Associated session ID")
+    project_id: Optional[str] = Field(default=None, description="Associated project ID")
 
     @field_validator('category')
     @classmethod
@@ -126,6 +127,7 @@ class SessionResponse(BaseModel):
     model: str = Field(..., description="Model being used")
     rag: bool = Field(default=False, description="RAG enabled")
     archived: bool = Field(default=False, description="Whether session is archived")
+    project_id: Optional[str] = Field(default=None, description="Associated project")
 
 
 class MemoryResponse(BaseModel):

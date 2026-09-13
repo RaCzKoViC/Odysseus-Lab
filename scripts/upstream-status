@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Report Odysseus-Lab's local relationship to the Odysseus upstream refs.
+
+This command never fetches, merges, rebases, commits, or pushes. Run
+``git fetch upstream main dev`` explicitly before using it for a fresh report.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+
+DEFAULT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _git(root: Path, *args: str, check: bool = True) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check and result.returncode:
+        raise RuntimeError((result.stderr or result.stdout).strip() or "git command failed")
+    return result.stdout.strip()
+
+
+def _ref_status(root: Path, branch: str) -> dict[str, Any]:
+    ref = f"refs/remotes/upstream/{branch}"
+    if not _git(root, "rev-parse", "--verify", "--quiet", ref, check=False):
+        return {"branch": branch, "available": False}
+
+    sha = _git(root, "rev-parse", ref)
+    counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...{ref}")
+    ahead, behind = (int(value) for value in counts.split())
+    return {
+        "branch": branch,
+        "available": True,
+        "commit": sha,
+        "lab_ahead": ahead,
+        "lab_behind": behind,
+    }
+
+
+def _safe_remote_url(value: str) -> str:
+    """Remove credentials added by local Git URL rewriting."""
+    try:
+        parsed = urlsplit(value)
+        if not parsed.hostname:
+            return value
+        host = parsed.hostname
+        if parsed.port:
+            host = f"{host}:{parsed.port}"
+        return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, parsed.fragment))
+    except (TypeError, ValueError):
+        return "<redacted>"
+
+
+def collect(root: Path) -> dict[str, Any]:
+    baseline_path = root / "UPSTREAM_BASE"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    raw_remote_url = _git(root, "remote", "get-url", "upstream", check=False)
+    configured = bool(raw_remote_url)
+    remote_url = _safe_remote_url(raw_remote_url) if configured else ""
+
+    return {
+        "ok": configured,
+        "repository": str(root.resolve()),
+        "head": _git(root, "rev-parse", "HEAD"),
+        "baseline": baseline,
+        "upstream": {
+            "configured": configured,
+            "url": remote_url or None,
+            "refs": [
+                _ref_status(root, "main") if configured else {"branch": "main", "available": False},
+                _ref_status(root, "dev") if configured else {"branch": "dev", "available": False},
+            ],
+        },
+        "next_step": (
+            "Review commits and open a dedicated synchronization pull request."
+            if configured
+            else "Run: git remote add upstream https://github.com/odysseus-dev/odysseus.git"
+        ),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, default=DEFAULT_ROOT)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    args = parser.parse_args(argv)
+
+    try:
+        report = collect(args.repo.resolve())
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.as_json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"Odysseus-Lab HEAD: {report['head']}")
+        print(
+            "Tracked upstream base: "
+            f"{report['baseline']['branch']}@{report['baseline']['commit']}"
+        )
+        if not report["upstream"]["configured"]:
+            print("Upstream remote: not configured")
+        else:
+            print(f"Upstream remote: {report['upstream']['url']}")
+            for ref in report["upstream"]["refs"]:
+                if not ref["available"]:
+                    print(f"  {ref['branch']}: not fetched")
+                    continue
+                print(
+                    f"  {ref['branch']}: {ref['commit']} "
+                    f"(Lab ahead {ref['lab_ahead']}, behind {ref['lab_behind']})"
+                )
+        print(report["next_step"])
+    return 0 if report["ok"] else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

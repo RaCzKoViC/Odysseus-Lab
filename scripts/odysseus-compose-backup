@@ -1,0 +1,379 @@
+#!/usr/bin/env python3
+"""Snapshot and restore the complete Odysseus-Lab Compose state."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CHROMA_DESTINATION = "/chroma/chroma"
+BUNDLE_FILES = {"manifest.json", "app-data.tar.gz", "chromadb.tar.gz"}
+
+
+class BackupError(RuntimeError):
+    pass
+
+
+def _run(
+    args: list[str],
+    *,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+    capture: bool = True,
+) -> str:
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=cwd,
+            env=env,
+            capture_output=capture,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise BackupError(f"could not execute {args[0]}") from exc
+    if completed.returncode:
+        raise BackupError(f"{args[0]} command failed with exit code {completed.returncode}")
+    return completed.stdout.strip() if capture else ""
+
+
+def _compose(root: Path, *args: str) -> str:
+    return _run(["docker", "compose", *args], cwd=root)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _data_dir(root: Path) -> Path:
+    configured = os.environ.get("APP_DATA_DIR", "").strip()
+    if not configured:
+        env_path = root / ".env"
+        if env_path.is_file():
+            for raw in env_path.read_text(encoding="utf-8-sig").splitlines():
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key.strip() == "APP_DATA_DIR":
+                    configured = value.strip().strip("\"'")
+                    break
+    path = Path(configured or "data").expanduser()
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _chroma_image(root: Path) -> str:
+    text = (root / "docker-compose.yml").read_text(encoding="utf-8")
+    match = re.search(r"image:\s*(docker\.io/chromadb/chroma@sha256:[0-9a-f]{64})", text)
+    if not match:
+        raise BackupError("docker-compose.yml does not contain a pinned ChromaDB image")
+    return match.group(1)
+
+
+def _container_id(root: Path, service: str) -> str:
+    value = _compose(root, "ps", "-aq", service).splitlines()
+    if not value:
+        raise BackupError(
+            f"Compose service {service!r} has no container; start the stack once before backup"
+        )
+    return value[0].strip()
+
+
+def _is_running(root: Path, service: str) -> bool:
+    return bool(_compose(root, "ps", "--status", "running", "-q", service).strip())
+
+
+def _chroma_volume(root: Path) -> str:
+    container = _container_id(root, "chromadb")
+    template = (
+        "{{range .Mounts}}{{if eq .Destination "
+        f"\"{CHROMA_DESTINATION}\""
+        "}}{{.Name}}{{end}}{{end}}"
+    )
+    volume = _run(["docker", "inspect", "--format", template, container], cwd=root)
+    if not volume or not re.fullmatch(r"[A-Za-z0-9_.-]+", volume):
+        raise BackupError("could not resolve the Compose ChromaDB volume")
+    return volume
+
+
+def _stop_running(root: Path, services: list[str]) -> list[str]:
+    running = [service for service in services if _is_running(root, service)]
+    if running:
+        _compose(root, "stop", *running)
+    return running
+
+
+def _restart(root: Path, services: list[str]) -> None:
+    if not services:
+        return
+    ordered = [name for name in ("chromadb", "odysseus") if name in services]
+    _compose(root, "start", *ordered)
+
+
+def _archive_chroma(root: Path, volume: str, destination: Path) -> None:
+    image = _chroma_image(root)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", destination.name):
+        raise BackupError("invalid ChromaDB archive filename")
+    code = (
+        "import tarfile;"
+        f"t=tarfile.open('/backup/{destination.name}','w:gz');"
+        "t.add('/source',arcname='chroma',recursive=True);"
+        "t.close()"
+    )
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "python",
+            "-v",
+            f"{volume}:/source:ro",
+            "-v",
+            f"{destination.parent}:/backup",
+            image,
+            "-c",
+            code,
+        ],
+        cwd=root,
+    )
+    if not destination.is_file():
+        raise BackupError("ChromaDB archive was not created")
+
+
+def _validate_tar_members(path: Path, root_name: str) -> None:
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            for member in archive.getmembers():
+                rel = PurePosixPath(member.name)
+                if (
+                    rel.is_absolute()
+                    or ".." in rel.parts
+                    or not rel.parts
+                    or rel.parts[0] != root_name
+                    or member.issym()
+                    or member.islnk()
+                    or not (member.isdir() or member.isfile())
+                ):
+                    raise BackupError(f"unsafe {root_name} archive member")
+    except (OSError, tarfile.TarError) as exc:
+        raise BackupError(f"invalid {root_name} archive") from exc
+
+
+def _restore_chroma(root: Path, volume: str, source: Path) -> None:
+    _validate_tar_members(source, "chroma")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", source.name):
+        raise BackupError("invalid ChromaDB archive filename")
+    image = _chroma_image(root)
+    code = f"""
+import pathlib, shutil, tarfile
+root = pathlib.Path('/target')
+for child in root.iterdir():
+    shutil.rmtree(child) if child.is_dir() and not child.is_symlink() else child.unlink()
+with tarfile.open('/backup/{source.name}', 'r:gz') as archive:
+    for member in archive.getmembers():
+        parts = pathlib.PurePosixPath(member.name).parts[1:]
+        if not parts:
+            continue
+        target = root.joinpath(*parts)
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source_file = archive.extractfile(member)
+            with source_file, target.open('wb') as output:
+                shutil.copyfileobj(source_file, output)
+"""
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--entrypoint",
+            "python",
+            "-v",
+            f"{volume}:/target",
+            "-v",
+            f"{source.parent}:/backup:ro",
+            image,
+            "-c",
+            code,
+        ],
+        cwd=root,
+    )
+
+
+def _write_bundle(stage: Path, output: Path, manifest: dict[str, Any]) -> None:
+    (stage / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(output, "w:gz") as archive:
+        for name in sorted(BUNDLE_FILES):
+            archive.add(stage / name, arcname=name)
+
+
+def snapshot(root: Path, output: Path) -> dict[str, Any]:
+    if shutil.which("docker") is None:
+        raise BackupError("docker command not found")
+    data_dir = _data_dir(root)
+    if not data_dir.is_dir():
+        raise BackupError(f"application data directory does not exist: {data_dir}")
+    volume = _chroma_volume(root)
+    running = _stop_running(root, ["odysseus", "chromadb"])
+    try:
+        with tempfile.TemporaryDirectory(prefix="odysseus-compose-backup-") as tmp:
+            stage = Path(tmp)
+            app_archive = stage / "app-data.tar.gz"
+            env = os.environ.copy()
+            env["ODYSSEUS_BACKUP_DATA_DIR"] = str(data_dir)
+            _run(
+                [
+                    sys.executable,
+                    str(root / "scripts" / "odysseus-backup"),
+                    "snapshot",
+                    "--out",
+                    str(app_archive),
+                ],
+                cwd=root,
+                env=env,
+            )
+            chroma_archive = stage / "chromadb.tar.gz"
+            _archive_chroma(root, volume, chroma_archive)
+            manifest = {
+                "schema": "odysseus-compose-backup.v1",
+                "product": "Odysseus-Lab",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "artifacts": {
+                    "app-data.tar.gz": {"sha256": _sha256(app_archive)},
+                    "chromadb.tar.gz": {"sha256": _sha256(chroma_archive)},
+                },
+            }
+            _write_bundle(stage, output, manifest)
+    finally:
+        _restart(root, running)
+    return {"ok": True, "operation": "snapshot", "path": str(output), "sha256": _sha256(output)}
+
+
+def _extract_bundle(bundle: Path, stage: Path) -> dict[str, Any]:
+    try:
+        with tarfile.open(bundle, "r:gz") as archive:
+            members = archive.getmembers()
+            if {member.name for member in members} != BUNDLE_FILES:
+                raise BackupError("bundle must contain exactly the documented Foundation files")
+            if any(not member.isfile() or "/" in member.name for member in members):
+                raise BackupError("bundle contains an unsafe member")
+            for member in members:
+                source = archive.extractfile(member)
+                if source is None:
+                    raise BackupError("bundle member could not be read")
+                with source, (stage / member.name).open("wb") as output:
+                    shutil.copyfileobj(source, output)
+    except (OSError, tarfile.TarError) as exc:
+        raise BackupError("invalid Compose backup bundle") from exc
+
+    manifest = json.loads((stage / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("schema") != "odysseus-compose-backup.v1":
+        raise BackupError("unsupported Compose backup schema")
+    for name in ("app-data.tar.gz", "chromadb.tar.gz"):
+        expected = manifest.get("artifacts", {}).get(name, {}).get("sha256")
+        if not expected or _sha256(stage / name) != expected:
+            raise BackupError(f"checksum mismatch for {name}")
+    return manifest
+
+
+def restore(root: Path, bundle: Path) -> dict[str, Any]:
+    if shutil.which("docker") is None:
+        raise BackupError("docker command not found")
+    volume = _chroma_volume(root)
+    data_dir = _data_dir(root)
+    running = _stop_running(root, ["odysseus", "chromadb"])
+    try:
+        with tempfile.TemporaryDirectory(prefix="odysseus-compose-restore-") as tmp:
+            stage = Path(tmp)
+            manifest = _extract_bundle(bundle, stage)
+            _validate_tar_members(stage / "app-data.tar.gz", "data")
+            env = os.environ.copy()
+            env["ODYSSEUS_BACKUP_DATA_DIR"] = str(data_dir)
+            _run(
+                [
+                    sys.executable,
+                    str(root / "scripts" / "odysseus-backup"),
+                    "restore",
+                    str(stage / "app-data.tar.gz"),
+                    "--yes",
+                ],
+                cwd=root,
+                env=env,
+            )
+            rollback_chroma = stage / "chromadb-before-restore.tar.gz"
+            _archive_chroma(root, volume, rollback_chroma)
+            try:
+                _restore_chroma(root, volume, stage / "chromadb.tar.gz")
+            except Exception:
+                _restore_chroma(root, volume, rollback_chroma)
+                raise
+    finally:
+        _restart(root, running)
+    return {
+        "ok": True,
+        "operation": "restore",
+        "path": str(bundle),
+        "created_at": manifest["created_at"],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", type=Path, default=ROOT)
+    parser.add_argument("--pretty", action="store_true")
+    sub = parser.add_subparsers(dest="command", required=True)
+    snap = sub.add_parser("snapshot")
+    snap.add_argument("--out", type=Path)
+    restore_parser = sub.add_parser("restore")
+    restore_parser.add_argument("bundle", type=Path)
+    restore_parser.add_argument("--yes", action="store_true")
+    args = parser.parse_args(argv)
+    root = args.repo.resolve()
+
+    try:
+        if args.command == "snapshot":
+            (root / "backups").mkdir(parents=True, exist_ok=True)
+            output = args.out or (
+                root
+                / "backups"
+                / f"odysseus-compose-{datetime.now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
+            )
+            report = snapshot(root, output.resolve())
+        else:
+            if not args.yes:
+                raise BackupError("restore is destructive; pass --yes to continue")
+            report = restore(root, args.bundle.resolve())
+    except (BackupError, OSError, ValueError, json.JSONDecodeError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
+        return 1
+
+    print(json.dumps(report, indent=2 if args.pretty else None, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

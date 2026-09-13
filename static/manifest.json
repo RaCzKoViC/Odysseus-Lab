@@ -1,7 +1,7 @@
 {
-  "name": "Odysseus",
-  "short_name": "Odysseus",
-  "description": "Self-hosted AI chat with memory, documents, and tools",
+  "name": "Odysseus-Lab",
+  "short_name": "Odysseus-Lab",
+  "description": "Local AI agent and development laboratory",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

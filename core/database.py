@@ -172,6 +172,39 @@ class EncryptedText(TypeDecorator):
         return decrypt(value)
 
 
+class Project(TimestampMixin, Base):
+    """Owner-scoped container for related conversations and workspace state."""
+    __tablename__ = "projects"
+
+    id = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="active")
+    settings = Column(JSON, nullable=False, default=dict)
+    default_workspace_path = Column(String, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("ix_projects_owner_status", "owner", "status"),
+        Index("ix_projects_owner_name", "owner", "name"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "owner": self.owner,
+            "name": self.name,
+            "description": self.description or "",
+            "status": self.status,
+            "settings": self.settings or {},
+            "default_workspace_path": self.default_workspace_path,
+            "sort_order": self.sort_order or 0,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class Session(TimestampMixin, Base):
     """
     SQLAlchemy model for Session table.
@@ -187,6 +220,10 @@ class Session(TimestampMixin, Base):
     endpoint_url = Column(String, nullable=False)
     model = Column(String, nullable=False)
     owner = Column(String, nullable=True, index=True)  # username; null = legacy/shared
+    # Application-validated instead of a database FK: several supported tools
+    # create the sessions table in isolation, matching the crew_member_id
+    # compatibility pattern below.
+    project_id = Column(String, nullable=True, index=True)
     
     # Configuration flags
     rag = Column(Boolean, default=False)
@@ -249,6 +286,7 @@ class Session(TimestampMixin, Base):
             'total_input_tokens': self.total_input_tokens or 0,
             'total_output_tokens': self.total_output_tokens or 0,
             'crew_member_id': self.crew_member_id,
+            'project_id': self.project_id,
         }
 
 class ChatMessage(Base):
@@ -709,6 +747,7 @@ class CrewMember(TimestampMixin, Base):
 
     id            = Column(String, primary_key=True, index=True)
     owner         = Column(String, nullable=True, index=True)
+    project_id    = Column(String, nullable=True, index=True)
     name          = Column(String, nullable=False)
     avatar        = Column(String, nullable=True)
     user_name     = Column(String, nullable=True)          # what they call the user
@@ -721,6 +760,7 @@ class CrewMember(TimestampMixin, Base):
     is_active     = Column(Boolean, default=True)
     sort_order    = Column(Integer, default=0)
     is_default_assistant = Column(Boolean, default=False)   # singleton per-owner "personal assistant"
+    is_project_default = Column(Boolean, default=False)
     timezone      = Column(String, nullable=True)           # IANA tz name (e.g. "America/New_York") for scheduled check-ins
 
     session = relationship("Session", foreign_keys=[session_id],
@@ -733,6 +773,7 @@ class ScheduledTask(TimestampMixin, Base):
 
     id             = Column(String, primary_key=True, index=True)
     owner          = Column(String, nullable=True, index=True)
+    project_id     = Column(String, nullable=True, index=True)
     name           = Column(String, nullable=False, default="Untitled Task")
     prompt         = Column(Text, nullable=True)              # LLM prompt (for task_type="llm")
     task_type      = Column(String, default="llm")            # "llm" | "action"
@@ -813,6 +854,7 @@ class TaskRun(Base):
 
     id          = Column(String, primary_key=True, index=True)
     task_id     = Column(String, ForeignKey("scheduled_tasks.id", ondelete="CASCADE"), nullable=False)
+    project_id  = Column(String, nullable=True, index=True)
     started_at  = Column(DateTime, nullable=False, default=utcnow_naive)
     finished_at = Column(DateTime, nullable=True)
     status      = Column(String, default="running")  # "running", "success", "error"
@@ -1281,6 +1323,94 @@ def _migrate_add_folder_column():
             conn.close()
         except Exception:
             pass
+
+
+def _migrate_project_core():
+    """Add nullable project linkage to existing session tables.
+
+    ``projects`` itself is created by ``Base.metadata.create_all``. Existing
+    sessions remain unassigned, preserving every pre-0.2 code path.
+    """
+    db_path = _sqlite_db_path(engine.url)
+    if db_path is None or not os.path.exists(db_path):
+        return
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys=ON")
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        if "project_id" not in columns:
+            conn.execute("ALTER TABLE sessions ADD COLUMN project_id TEXT")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_sessions_project_id "
+            "ON sessions(project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_sessions_owner_project "
+            "ON sessions(owner, project_id)"
+        )
+        conn.commit()
+    except Exception as exc:
+        if conn is not None:
+            conn.rollback()
+        logger.warning("Project Core migration failed: %s", exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _migrate_project_integrations():
+    """Add optional project scope to tasks, runs, and crew members."""
+    db_path = _sqlite_db_path(engine.url)
+    if db_path is None or not os.path.exists(db_path):
+        return
+    definitions = {
+        "scheduled_tasks": {
+            "project_id": "TEXT",
+        },
+        "task_runs": {
+            "project_id": "TEXT",
+        },
+        "crew_members": {
+            "project_id": "TEXT",
+            "is_project_default": "BOOLEAN DEFAULT 0",
+        },
+    }
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        for table, columns in definitions.items():
+            existing = {
+                row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if not existing:
+                continue
+            for column, ddl in columns.items():
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_scheduled_tasks_owner_project "
+            "ON scheduled_tasks(owner, project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_crew_members_owner_project "
+            "ON crew_members(owner, project_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_task_runs_project_id "
+            "ON task_runs(project_id)"
+        )
+        conn.commit()
+    except Exception as exc:
+        if conn is not None:
+            conn.rollback()
+        logger.warning("Project integration migration failed: %s", exc)
+    finally:
+        if conn is not None:
+            conn.close()
+
 
 def _migrate_add_token_columns():
     """Add cumulative token tracking columns to sessions table."""
@@ -2114,6 +2244,8 @@ def init_db():
     _migrate_add_document_archived_column()
     _migrate_add_last_message_at_column()
     _migrate_add_folder_column()
+    _migrate_project_core()
+    _migrate_project_integrations()
     _migrate_add_token_columns()
     _migrate_add_mode_column()
     _migrate_add_multiuser_owner_columns()

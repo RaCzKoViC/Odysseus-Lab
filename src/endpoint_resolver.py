@@ -13,6 +13,7 @@ from typing import Optional, Tuple, Dict
 from urllib.parse import urlparse, urlunparse
 
 from core.database import SessionLocal, ModelEndpoint
+from src.constants import PRODUCT_NAME, REPOSITORY_URL
 from src.llm_core import _detect_provider, _host_match, _is_kimi_code_url, KIMI_CODE_USER_AGENT, _ollama_api_root
 
 logger = logging.getLogger(__name__)
@@ -333,8 +334,8 @@ def build_headers(api_key: Optional[str], base: str) -> Dict[str, str]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if provider == "openrouter":
-        headers.setdefault("HTTP-Referer", "https://github.com/odysseus-dev/odysseus")
-        headers.setdefault("X-OpenRouter-Title", "Odysseus")
+        headers.setdefault("HTTP-Referer", REPOSITORY_URL)
+        headers.setdefault("X-OpenRouter-Title", PRODUCT_NAME)
     if _is_kimi_code_url(base):
         headers.setdefault("User-Agent", KIMI_CODE_USER_AGENT)
     return headers

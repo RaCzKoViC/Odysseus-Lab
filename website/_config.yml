@@ -1,5 +1,5 @@
-title: Odysseus
-description: A self-hosted AI workspace for chat, agents, tools, and local models.
+title: Odysseus-Lab
+description: A local-first AI agent and development laboratory.
 theme: jekyll-theme-primer
 
 plugins:

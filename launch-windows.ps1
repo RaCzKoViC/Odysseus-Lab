@@ -132,7 +132,11 @@ if (-not (Test-Path $venvPy)) {
 # 3. Install / update dependencies
 Write-Step "Installing dependencies (first run can take a few minutes)"
 & $venvPy -m pip install --upgrade pip --quiet
-& $venvPy -m pip install -r requirements.txt
+$constraintArgs = @()
+if ($pyVersion.StartsWith("3.11")) {
+    $constraintArgs = @("-c", "constraints\py311.txt")
+}
+& $venvPy -m pip install -r requirements.txt @constraintArgs
 if ($LASTEXITCODE -ne 0) { Fail "Dependency install failed. Scroll up for the pip error." }
 
 # 4. First-time setup (creates data dirs, DB, .env, admin user)
@@ -149,7 +153,19 @@ if (-not (Find-GitBash)) {
     Write-Host "      https://git-scm.com/download/win" -ForegroundColor Yellow
 }
 
-# 6. Point CUDA_PATH at a real CUDA toolkit so GPU llama-cpp-python can import.
+# 6. Report local Ollama readiness. Native mode uses loopback and does not need
+# OLLAMA_HOST=0.0.0.0; that setting is only required for Docker-to-host access.
+try {
+    Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 2 | Out-Null
+    Write-Host "Ollama detected at http://127.0.0.1:11434" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "NOTE: Ollama was not detected at http://127.0.0.1:11434." -ForegroundColor Yellow
+    Write-Host "      The app will start, but local Ollama models remain unavailable." -ForegroundColor Yellow
+    Write-Host "      Start Ollama, then run scripts\odysseus-doctor in another terminal." -ForegroundColor Yellow
+}
+
+# 7. Point CUDA_PATH at a real CUDA toolkit so GPU llama-cpp-python can import.
 $cudaBase = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
 if (Test-Path $cudaBase) {
     $cudaBest = Get-ChildItem $cudaBase -Directory -ErrorAction SilentlyContinue |
@@ -162,12 +178,12 @@ if (Test-Path $cudaBase) {
     }
 }
 
-# 7. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
+# 8. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
 # -Port only reaches uvicorn as a flag. Everything that builds a URL for this
 # instance - internal_api_base(), companion pairing, the MCP OAuth callback -
 # reads APP_PORT, so set it too or they all assume 7000.
 $env:APP_PORT = $Port
-Write-Step ("Starting Odysseus at http://{0}:{1}" -f $BindHost, $Port)
+Write-Step ("Starting Odysseus-Lab at http://{0}:{1}" -f $BindHost, $Port)
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 & $venvPy -m uvicorn app:app --host $BindHost --port $Port

@@ -100,9 +100,27 @@ jobs:
             node --check "$f"
           done
 
-  python-tests:
-    name: Python tests (pytest)
+  compose-config:
+    name: Docker Compose configuration
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate merged Compose configuration
+        run: docker compose config --quiet
+
+  python-tests:
+    name: Python tests (pytest, ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.11"
+            constraints: py311
+          - python-version: "3.14"
+            constraints: py314
     # Make Python test validation authoritative for the configured scope.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -136,11 +154,78 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         if: steps.docs-check.outputs.docs_only != 'true'
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt -c constraints/${{ matrix.constraints }}.txt
         if: steps.docs-check.outputs.docs_only != 'true'
       - run: mkdir -p data  # sqlite DB lives at ./data/app.db
         if: steps.docs-check.outputs.docs_only != 'true'
       - run: python -m pytest -q
         if: steps.docs-check.outputs.docs_only != 'true'
+
+  windows-foundation:
+    name: Windows Foundation smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Parse PowerShell entrypoints
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($path in @("launch-windows.ps1", "build-windows-portable.ps1")) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path), [ref]$tokens, [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$path`: $_" }
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+      - run: python -m pip install -r requirements.txt -c constraints/py311.txt
+      - run: python -m compileall -q app.py core routes src services scripts tests
+      - name: Run Windows foundation tests
+        run: >-
+          python -m pytest -q
+          tests/test_platform_compat.py
+          tests/test_windows_update_script.py
+          tests/test_runtime_paths.py
+          tests/test_readiness.py
+
+  docker-smoke:
+    name: Docker stack readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ODYSSEUS_ADMIN_PASSWORD: foundation-test-password
+      COMPOSE_FILE: docker-compose.yml:docker/foundation-smoke.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and start the stack
+        run: docker compose up -d --build
+      - name: Wait for application readiness
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 36); do
+            if curl --fail --silent http://127.0.0.1:7000/api/ready > /tmp/readiness.json; then
+              cat /tmp/readiness.json
+              exit 0
+            fi
+            sleep 10
+          done
+          docker compose ps
+          docker compose logs --no-color --tail=200
+          exit 1
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

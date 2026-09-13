@@ -186,12 +186,26 @@ class MemoryManager:
         """
         return self._read_entries()
 
-    def load(self, owner: str = None) -> List[Dict]:
-        """Load memory entries, optionally filtered by owner."""
+    def load(
+        self,
+        owner: str = None,
+        project_id: str = None,
+        mode: str = "inherit",
+    ) -> List[Dict]:
+        """Load owner memories with an optional project visibility policy."""
         entries = self.load_all()
-        if owner is None:
+        if owner is not None:
+            entries = [e for e in entries if e.get("owner") == owner]
+        if not project_id or mode == "inherit":
             return entries
-        return [e for e in entries if e.get("owner") == owner]
+        if mode == "project_only":
+            return [e for e in entries if e.get("project_id") == project_id]
+        if mode == "project_plus_global":
+            return [
+                e for e in entries
+                if not e.get("project_id") or e.get("project_id") == project_id
+            ]
+        raise ValueError("invalid project memory mode")
 
     def claim_ownerless(self, owner: str):
         """Assign all ownerless memory entries to the given owner."""
@@ -277,7 +291,14 @@ class MemoryManager:
             json.dump(entries, f, ensure_ascii=False, indent=2)
         os.replace(tmp_file, self.memory_file)
     
-    def add_entry(self, text: str, source: str = "user", category: str = "fact", owner: str = None) -> Dict:
+    def add_entry(
+        self,
+        text: str,
+        source: str = "user",
+        category: str = "fact",
+        owner: str = None,
+        project_id: str = None,
+    ) -> Dict:
         """Add a new memory entry."""
         if not text.strip():
             raise ValueError("Memory text cannot be empty")
@@ -292,6 +313,8 @@ class MemoryManager:
         }
         if owner:
             entry["owner"] = owner
+        if project_id:
+            entry["project_id"] = project_id
         return entry
 
     def increment_uses(self, ids: List[str]) -> None:

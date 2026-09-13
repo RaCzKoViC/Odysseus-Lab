@@ -19,11 +19,11 @@ automatically; you do not start them.
 |---|---|---|
 | **Secret scan** (gitleaks) | An API key, token, or password being committed by mistake or on purpose | Yes |
 | **Workflow security** (actionlint + zizmor) | A broken or insecure automation file that could leak the repo's access token | Yes |
-| **Dependency review** | A pull request that adds a software library with a known security hole | Yes |
-| **pip-audit** | Known security holes in the Python libraries already used | No (advisory) |
+| **Dependency review** | A pull request that adds a software library with a known security hole | Yes (public repositories) |
+| **pip-audit** | Known security holes in the Python libraries already used | Yes on private repositories; advisory on public repositories |
 | **Container scan: hadolint** | Mistakes and insecure patterns in the `Dockerfile` | Yes |
 | **Container scan: Trivy** | Known security holes in the Docker image | No (advisory) |
-| **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | No (advisory) |
+| **CodeQL** | Real bugs in the app's own code: injection, auth mistakes, path traversal | Advisory; skipped in private repositories without GHAS |
 
 "Blocks a merge" means a red X appears on the pull request and, once you enable
 the setting below, the **Merge** button is disabled until it is fixed.
@@ -64,24 +64,27 @@ This makes the **Merge** button refuse to work until the gating checks pass.
 2. Click **Settings** (top right of the repo).
 3. In the left sidebar, click **Branches**.
 4. Under **Branch protection rules**, click **Add branch ruleset** (or **Add
-   rule**), and set the branch name pattern to `dev` (this is the branch all
-   pull requests target; `main` is fast-forwarded at releases).
+   rule**), and set the branch name pattern to `main`.
 5. Enable **Require status checks to pass before merging**.
 6. In the search box that appears, add these checks by name:
    - `Python syntax (compileall)`
    - `JS syntax (node --check)`
+   - `Python tests (pytest, 3.11)`
+   - `Python tests (pytest, 3.14)`
+   - `Docker Compose configuration`
+   - `Windows Foundation smoke`
+   - `Docker stack readiness`
    - `gitleaks`
    - `actionlint`
    - `zizmor (Actions SAST)`
    - `hadolint (Dockerfile lint)`
-   - `dependency-review (PR gate)`
+   - `pip-audit (private gate / public advisory)` for a private repository, or
+     `dependency-review (PR gate)` for a public repository.
 
-   The first two come from the correctness CI (`ci.yml`); the rest are this
-   security suite. Leave pytest, pip-audit, Trivy, and CodeQL unchecked so they
-   stay advisory.
-7. Also enable **Require a pull request before merging** and **Require review
-   from Code Owners** (this uses the `.github/CODEOWNERS` file so every change
-   needs your sign-off).
+   Leave Trivy and CodeQL advisory. CodeQL requires GitHub Advanced Security
+   for a private repository.
+7. Also enable **Require a pull request before merging**. Enable Code Owner
+   review only after assigning owners in `.github/CODEOWNERS`.
 8. Click **Create** / **Save changes**.
 
 Note: a check name only appears in the list after it has run at least once, so
@@ -93,9 +96,10 @@ let the workflows run on one pull request first, then add them here.
 2. Turn on **Dependency graph** (usually on by default for public repos) -- this
    powers Dependency review and Dependabot.
 3. Turn on **Dependabot alerts** and **Dependabot security updates**.
-4. Under **Code scanning**, keep **Default setup** disabled. CodeQL is
-   configured by `.github/workflows/codeql.yml`; enabling default setup at the
-   same time causes GitHub to reject uploads from the checked-in workflow.
+4. On a private repository, CodeQL requires GitHub Advanced Security. After
+   enabling it, add the repository variable `ODYSSEUS_ENABLE_CODEQL=true`.
+   Keep **Default setup** disabled because CodeQL is configured by
+   `.github/workflows/codeql.yml`; enabling both modes causes duplicate setup.
 
 ## Keeping it current
 

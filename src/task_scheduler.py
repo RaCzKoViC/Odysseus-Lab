@@ -746,13 +746,21 @@ class TaskScheduler:
         run_id = str(uuid.uuid4())
         _q_db = SessionLocal()
         try:
-            run = TaskRun(
+            from core.database import ScheduledTask
+            queued_task = _q_db.query(ScheduledTask).filter(
+                ScheduledTask.id == task_id
+            ).first()
+            task_project_id = getattr(queued_task, "project_id", None)
+            run_kwargs = dict(
                 id=run_id,
                 task_id=task_id,
                 started_at=_utcnow(),
                 status="queued",
                 result="Queued — waiting for a free slot…",
             )
+            if hasattr(TaskRun, "project_id"):
+                run_kwargs["project_id"] = task_project_id
+            run = TaskRun(**run_kwargs)
             _q_db.add(run)
             _q_db.commit()
         except Exception:
@@ -879,13 +887,16 @@ class TaskScheduler:
             else:
                 # Defensive: row may have been wiped; recreate so the rest of
                 # the code can look it up by run_id without crashing.
-                run = TaskRun(
+                run_kwargs = dict(
                     id=run_id,
                     task_id=task.id,
                     started_at=_utcnow(),
                     status="running",
                     result="Starting…",
                 )
+                if hasattr(TaskRun, "project_id"):
+                    run_kwargs["project_id"] = getattr(task, "project_id", None)
+                run = TaskRun(**run_kwargs)
                 db.add(run)
                 db.commit()
 
@@ -1540,7 +1551,7 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Task] {task.name}",
                 endpoint_url=endpoint_url,
@@ -1550,6 +1561,9 @@ class TaskScheduler:
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()
@@ -1727,7 +1741,7 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Task] {task.name}",
                 endpoint_url=endpoint_url or "",
@@ -1737,6 +1751,9 @@ class TaskScheduler:
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()
@@ -2095,7 +2112,7 @@ class TaskScheduler:
         session_id = task.session_id
         if not session_id:
             session_id = str(uuid.uuid4())
-            sess = DbSession(
+            session_kwargs = dict(
                 id=session_id,
                 name=f"[Research] {task.name}",
                 endpoint_url=endpoint_url,
@@ -2105,6 +2122,9 @@ class TaskScheduler:
                 created_at=_utcnow(),
                 updated_at=_utcnow(),
             )
+            if hasattr(DbSession, "project_id"):
+                session_kwargs["project_id"] = getattr(task, "project_id", None)
+            sess = DbSession(**session_kwargs)
             db.add(sess)
             task.session_id = session_id
             db.commit()

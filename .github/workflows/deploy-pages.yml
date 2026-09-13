@@ -17,6 +17,9 @@ concurrency:
 jobs:
   build:
     name: Package static site
+    # Odysseus-Lab is private and intentionally does not publish Pages in 0.1.
+    # Making the repository public re-enables this inherited upstream workflow.
+    if: github.event.repository.private == false
     runs-on: ubuntu-latest
     permissions:
       contents: read

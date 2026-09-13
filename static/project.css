@@ -1,0 +1,240 @@
+.project-pane {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: flex;
+  flex-direction: column;
+  color: var(--text, #d7dae0);
+  background: var(--bg, #282c34);
+}
+
+.project-pane[hidden] {
+  display: none;
+}
+
+.project-pane-header {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border, #3b4048);
+}
+
+.project-pane-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  color: var(--fg, #9cdef2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-pane-close,
+.project-action,
+.project-tab,
+.project-list-item {
+  border: 1px solid var(--border, #3b4048);
+  color: inherit;
+  background: var(--panel2, #1e2228);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-pane-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.project-pane-body {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
+}
+
+.project-list {
+  min-width: 0;
+  padding: 14px;
+  border-right: 1px solid var(--border, #3b4048);
+  overflow-y: auto;
+}
+
+.project-create-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.project-create-form input,
+.project-settings-form input,
+.project-settings-form textarea,
+.project-settings-form select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border, #3b4048);
+  border-radius: 5px;
+  padding: 9px 10px;
+  color: inherit;
+  background: var(--panel, #111);
+  font: inherit;
+}
+
+.project-action {
+  border-radius: 5px;
+  padding: 8px 11px;
+}
+
+.project-action.primary {
+  color: var(--bg, #282c34);
+  border-color: var(--fg, #9cdef2);
+  background: var(--fg, #9cdef2);
+}
+
+.project-action.danger {
+  color: var(--red, #e06c75);
+  border-color: var(--red, #e06c75);
+}
+
+.project-list-items {
+  display: grid;
+  gap: 6px;
+}
+
+.project-list-item {
+  width: 100%;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: left;
+}
+
+.project-list-item.active {
+  border-color: var(--fg, #9cdef2);
+  color: var(--fg, #9cdef2);
+}
+
+.project-list-meta,
+.project-muted {
+  color: var(--muted, #6b8a94);
+  font-size: 11px;
+}
+
+.project-workspace {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 18px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border, #3b4048);
+}
+
+.project-tab {
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.project-tab[aria-selected="true"] {
+  color: var(--fg, #9cdef2);
+  border-color: var(--fg, #9cdef2);
+}
+
+.project-panel {
+  min-height: 0;
+  flex: 1;
+  padding: 20px;
+  overflow: auto;
+}
+
+.project-panel[hidden] {
+  display: none;
+}
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.project-card {
+  padding: 14px;
+  border: 1px solid var(--border, #3b4048);
+  border-radius: 7px;
+  background: var(--panel2, #1e2228);
+}
+
+.project-card-value {
+  margin-top: 8px;
+  font-size: 22px;
+  color: var(--fg, #9cdef2);
+}
+
+.project-session-row,
+.project-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, #3b4048);
+}
+
+.project-session-row button {
+  flex: 1;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-settings-form {
+  max-width: 720px;
+  display: grid;
+  gap: 12px;
+}
+
+.project-settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.project-empty {
+  padding: 30px 10px;
+  color: var(--muted, #6b8a94);
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .project-pane-body {
+    grid-template-columns: 1fr;
+  }
+
+  .project-list {
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border, #3b4048);
+  }
+
+  .project-tabs {
+    padding: 8px 10px;
+  }
+
+  .project-panel {
+    padding: 14px;
+  }
+
+  .project-tab,
+  .project-pane-close,
+  .project-action {
+    min-height: 44px;
+  }
+}
