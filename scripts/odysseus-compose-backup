@@ -21,6 +21,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CHROMA_DESTINATION = "/chroma/chroma"
 BUNDLE_FILES = {"manifest.json", "app-data.tar.gz", "chromadb.tar.gz"}
+# Chroma's Rust image does not ship Python. Keep the archive runtime independent
+# of the database image, and pin its multi-platform manifest for reproducibility.
+BACKUP_HELPER_IMAGE = (
+    "docker.io/library/python:3.14-slim@sha256:"
+    "cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6"
+)
 
 
 class BackupError(RuntimeError):
@@ -79,12 +85,14 @@ def _data_dir(root: Path) -> Path:
     return path.resolve() if path.is_absolute() else (root / path).resolve()
 
 
-def _chroma_image(root: Path) -> str:
-    text = (root / "docker-compose.yml").read_text(encoding="utf-8")
-    match = re.search(r"image:\s*(docker\.io/chromadb/chroma@sha256:[0-9a-f]{64})", text)
-    if not match:
-        raise BackupError("docker-compose.yml does not contain a pinned ChromaDB image")
-    return match.group(1)
+def _prepare_backup_helper(root: Path) -> None:
+    # Docker pulls a missing helper here, before taking services offline. A
+    # failed download or missing interpreter must leave the running stack alone.
+    _run(
+        ["docker", "run", "--rm", "--network", "none", "--entrypoint", "python",
+         BACKUP_HELPER_IMAGE, "-c", "import pathlib, shutil, tarfile"],
+        cwd=root,
+    )
 
 
 def _container_id(root: Path, service: str) -> str:
@@ -128,7 +136,6 @@ def _restart(root: Path, services: list[str]) -> None:
 
 
 def _archive_chroma(root: Path, volume: str, destination: Path) -> None:
-    image = _chroma_image(root)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", destination.name):
         raise BackupError("invalid ChromaDB archive filename")
     code = (
@@ -142,13 +149,16 @@ def _archive_chroma(root: Path, volume: str, destination: Path) -> None:
             "docker",
             "run",
             "--rm",
+            "--pull=never",
+            "--network",
+            "none",
             "--entrypoint",
             "python",
             "-v",
             f"{volume}:/source:ro",
             "-v",
             f"{destination.parent}:/backup",
-            image,
+            BACKUP_HELPER_IMAGE,
             "-c",
             code,
         ],
@@ -181,7 +191,6 @@ def _restore_chroma(root: Path, volume: str, source: Path) -> None:
     _validate_tar_members(source, "chroma")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", source.name):
         raise BackupError("invalid ChromaDB archive filename")
-    image = _chroma_image(root)
     code = f"""
 import pathlib, shutil, tarfile
 root = pathlib.Path('/target')
@@ -206,13 +215,16 @@ with tarfile.open('/backup/{source.name}', 'r:gz') as archive:
             "docker",
             "run",
             "--rm",
+            "--pull=never",
+            "--network",
+            "none",
             "--entrypoint",
             "python",
             "-v",
             f"{volume}:/target",
             "-v",
             f"{source.parent}:/backup:ro",
-            image,
+            BACKUP_HELPER_IMAGE,
             "-c",
             code,
         ],
@@ -238,6 +250,7 @@ def snapshot(root: Path, output: Path) -> dict[str, Any]:
     if not data_dir.is_dir():
         raise BackupError(f"application data directory does not exist: {data_dir}")
     volume = _chroma_volume(root)
+    _prepare_backup_helper(root)
     running = _stop_running(root, ["odysseus", "chromadb"])
     try:
         with tempfile.TemporaryDirectory(prefix="odysseus-compose-backup-") as tmp:
@@ -305,6 +318,7 @@ def restore(root: Path, bundle: Path) -> dict[str, Any]:
         raise BackupError("docker command not found")
     volume = _chroma_volume(root)
     data_dir = _data_dir(root)
+    _prepare_backup_helper(root)
     running = _stop_running(root, ["odysseus", "chromadb"])
     try:
         with tempfile.TemporaryDirectory(prefix="odysseus-compose-restore-") as tmp:
