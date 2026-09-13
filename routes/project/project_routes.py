@@ -7,14 +7,17 @@ import uuid
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 
 from core.database import (
     CrewMember,
     Project,
+    ScheduledTask,
     Session as DbSession,
     SessionLocal,
+    TaskRun,
     utcnow_naive,
 )
 from src.auth_helpers import require_user
@@ -24,6 +27,7 @@ from src.project_paths import (
     cleanup_empty_project_root,
     ensure_project_workspace,
     list_project_workspace,
+    remove_project_root,
 )
 from src.project_scope import get_owned_project, project_query, storage_owner
 
@@ -69,6 +73,12 @@ class ProjectAgentUpdate(BaseModel):
     greeting: Optional[str] = Field(default=None, max_length=2000)
     enabled_tools: Optional[list[str]] = None
     is_default: Optional[bool] = None
+
+
+class ProjectAssignRequest(BaseModel):
+    session_ids: list[str] = Field(default_factory=list, max_length=500)
+    memory_ids: list[str] = Field(default_factory=list, max_length=500)
+    only_unassigned: bool = True
 
 
 def _owner(request: Request) -> str:
@@ -179,7 +189,7 @@ def _serialize_agent(agent: CrewMember) -> dict[str, Any]:
     }
 
 
-def setup_project_routes() -> APIRouter:
+def setup_project_routes(memory_manager=None, memory_vector=None) -> APIRouter:
     router = APIRouter(prefix="/api/projects", tags=["projects"])
 
     @router.get("")
@@ -244,6 +254,91 @@ def setup_project_routes() -> APIRouter:
             db.rollback()
             cleanup_empty_project_root(project_id)
             raise HTTPException(status_code=500, detail="Failed to create project")
+        finally:
+            db.close()
+
+    @router.post("/import", status_code=201)
+    def import_project(request: Request, body: dict[str, Any]):
+        from src.project_bundle import import_project_contents, validate_project_bundle
+
+        owner = _owner(request)
+        bundle = validate_project_bundle(body)
+        source = bundle["project"]
+        settings = _validate_settings(dict(source.get("settings") or {}))
+        project_id = str(uuid.uuid4())
+        ensure_project_workspace(project_id)
+        db = SessionLocal()
+        try:
+            base_name = source["name"].strip()
+            name = base_name
+            suffix = 2
+            while db.query(Project.id).filter(
+                Project.owner == owner,
+                func.lower(Project.name) == name.casefold(),
+            ).first():
+                name = f"{base_name} (Imported {suffix})"
+                suffix += 1
+            project = Project(
+                id=project_id,
+                owner=owner,
+                name=name[:120],
+                description=source.get("description", "").strip(),
+                status="active",
+                settings=settings,
+                default_workspace_path=f"projects/{project_id}/workspace",
+            )
+            db.add(project)
+            db.flush()
+            counts = import_project_contents(
+                db,
+                project,
+                owner,
+                bundle,
+                memory_manager=memory_manager,
+                memory_vector=memory_vector,
+            )
+            db.commit()
+            db.refresh(project)
+            return {"project": _serialize(project, session_count=counts["sessions"]), "imported": counts}
+        except HTTPException:
+            db.rollback()
+            try:
+                remove_project_root(project_id)
+            except (OSError, RuntimeError):
+                pass
+            raise
+        except Exception:
+            db.rollback()
+            try:
+                remove_project_root(project_id)
+            except (OSError, RuntimeError):
+                pass
+            raise HTTPException(500, "Failed to import project")
+        finally:
+            db.close()
+
+    @router.get("/{project_id}/export")
+    def export_project(request: Request, project_id: str):
+        from src.project_bundle import export_project_bundle
+
+        owner = _owner(request)
+        db = SessionLocal()
+        try:
+            project = get_owned_project(db, owner, project_id, include_archived=True)
+            bundle = export_project_bundle(
+                db,
+                project,
+                owner,
+                memory_manager=memory_manager,
+            )
+            return JSONResponse(
+                bundle,
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="odysseus-project-{project.id}.json"'
+                    )
+                },
+            )
         finally:
             db.close()
 
@@ -351,6 +446,57 @@ def setup_project_routes() -> APIRouter:
                 .limit(5)
                 .all()
             )
+            session_metrics = _sessions_for_owner(
+                db.query(
+                    func.count(DbSession.id),
+                    func.coalesce(func.sum(DbSession.total_input_tokens), 0),
+                    func.coalesce(func.sum(DbSession.total_output_tokens), 0),
+                ),
+                owner,
+            ).filter(DbSession.project_id == project.id).one()
+            task_query = db.query(ScheduledTask).filter(
+                ScheduledTask.project_id == project.id
+            )
+            if owner == DEFAULT_LOCAL_OWNER:
+                task_query = task_query.filter(
+                    (ScheduledTask.owner == None)  # noqa: E711
+                    | (ScheduledTask.owner == DEFAULT_LOCAL_OWNER)
+                )
+            else:
+                task_query = task_query.filter(ScheduledTask.owner == owner)
+            task_count = task_query.count()
+            active_task_count = task_query.filter(ScheduledTask.status == "active").count()
+            agent_count = _project_agent_query(db, owner, project.id).count()
+            run_metrics = (
+                db.query(
+                    func.count(TaskRun.id),
+                    func.coalesce(func.sum(TaskRun.tokens_used), 0),
+                )
+                .join(ScheduledTask, ScheduledTask.id == TaskRun.task_id)
+                .filter(ScheduledTask.project_id == project.id)
+            )
+            if owner == DEFAULT_LOCAL_OWNER:
+                run_metrics = run_metrics.filter(
+                    (ScheduledTask.owner == None)  # noqa: E711
+                    | (ScheduledTask.owner == DEFAULT_LOCAL_OWNER)
+                )
+            else:
+                run_metrics = run_metrics.filter(ScheduledTask.owner == owner)
+            run_count, task_tokens = run_metrics.one()
+            memory_count = 0
+            if memory_manager is not None:
+                if owner == DEFAULT_LOCAL_OWNER:
+                    memory_count = sum(
+                        1 for memory in memory_manager.load_all()
+                        if memory.get("project_id") == project.id
+                        and memory.get("owner") in (None, DEFAULT_LOCAL_OWNER)
+                    )
+                else:
+                    memory_count = len(memory_manager.load(
+                        owner=owner,
+                        project_id=project.id,
+                        mode="project_only",
+                    ))
             return {
                 "project": _serialize(project, session_count=(
                     _sessions_for_owner(db.query(func.count(DbSession.id)), owner)
@@ -366,7 +512,108 @@ def setup_project_routes() -> APIRouter:
                     }
                     for session in sessions
                 ],
+                "metrics": {
+                    "sessions": int(session_metrics[0] or 0),
+                    "input_tokens": int(session_metrics[1] or 0),
+                    "output_tokens": int(session_metrics[2] or 0),
+                    "agents": agent_count,
+                    "tasks": task_count,
+                    "active_tasks": active_task_count,
+                    "task_runs": int(run_count or 0),
+                    "task_tokens": int(task_tokens or 0),
+                    "memories": memory_count,
+                },
             }
+        finally:
+            db.close()
+
+    @router.post("/{project_id}/assign")
+    def assign_existing_data(
+        request: Request,
+        project_id: str,
+        body: ProjectAssignRequest,
+    ):
+        owner = _owner(request)
+        db = SessionLocal()
+        memories = None
+        memory_updates = []
+        memory_previous = {}
+        memory_saved = False
+        try:
+            project = get_owned_project(db, owner, project_id)
+            sessions = [
+                _session_for_owner(db, owner, session_id)
+                for session_id in dict.fromkeys(body.session_ids)
+            ]
+            if body.only_unassigned and any(session.project_id for session in sessions):
+                raise HTTPException(409, "A selected session already belongs to a project")
+
+            if body.memory_ids:
+                if memory_manager is None:
+                    raise HTTPException(503, "Memory manager is unavailable")
+                memories = memory_manager.load_all_for_update()
+                by_id = {memory.get("id"): memory for memory in memories}
+                expected_owner = None if owner == DEFAULT_LOCAL_OWNER else owner
+                for memory_id in dict.fromkeys(body.memory_ids):
+                    memory = by_id.get(memory_id)
+                    if memory is None or memory.get("owner") not in (
+                        expected_owner,
+                        owner if owner == DEFAULT_LOCAL_OWNER else expected_owner,
+                    ):
+                        raise HTTPException(404, "Memory not found")
+                    if body.only_unassigned and memory.get("project_id"):
+                        raise HTTPException(409, "A selected memory already belongs to a project")
+                    memory_updates.append(memory)
+                    memory_previous[memory_id] = memory.get("project_id")
+
+            for session in sessions:
+                session.project_id = project.id
+                session.updated_at = utcnow_naive()
+            for memory in memory_updates:
+                memory["project_id"] = project.id
+            if memories is not None:
+                memory_manager.save(memories)
+                memory_saved = True
+            db.commit()
+            for session in sessions:
+                _sync_cached_session(session.id, project.id)
+            if memory_vector is not None and getattr(memory_vector, "healthy", False):
+                for memory in memory_updates:
+                    memory_vector.remove(memory["id"])
+                    memory_vector.add(
+                        memory["id"],
+                        memory.get("text", ""),
+                        owner=memory.get("owner"),
+                        project_id=project.id,
+                    )
+            return {
+                "ok": True,
+                "project_id": project.id,
+                "assigned_sessions": len(sessions),
+                "assigned_memories": len(memory_updates),
+            }
+        except HTTPException:
+            db.rollback()
+            if memory_saved and memories is not None:
+                for memory in memory_updates:
+                    previous = memory_previous.get(memory.get("id"))
+                    if previous:
+                        memory["project_id"] = previous
+                    else:
+                        memory.pop("project_id", None)
+                memory_manager.save(memories)
+            raise
+        except Exception:
+            db.rollback()
+            if memory_saved and memories is not None:
+                for memory in memory_updates:
+                    previous = memory_previous.get(memory.get("id"))
+                    if previous:
+                        memory["project_id"] = previous
+                    else:
+                        memory.pop("project_id", None)
+                memory_manager.save(memories)
+            raise HTTPException(500, "Failed to assign project data")
         finally:
             db.close()
 

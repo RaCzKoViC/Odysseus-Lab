@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 import core.database as database
 import routes.project.project_routes as project_routes
 import src.project_paths as project_paths
+from src.memory import MemoryManager
 
 
 def _client(monkeypatch, tmp_path):
@@ -27,6 +28,7 @@ def _client(monkeypatch, tmp_path):
     monkeypatch.setattr(project_routes, "ensure_project_workspace", project_paths.ensure_project_workspace)
     monkeypatch.setattr(project_routes, "cleanup_empty_project_root", project_paths.cleanup_empty_project_root)
     monkeypatch.setattr(project_routes, "list_project_workspace", project_paths.list_project_workspace)
+    memory_manager = MemoryManager(str(data))
 
     app = FastAPI()
 
@@ -35,8 +37,10 @@ def _client(monkeypatch, tmp_path):
         request.state.current_user = request.headers.get("x-test-user", "alice")
         return await call_next(request)
 
-    app.include_router(project_routes.setup_project_routes())
-    return TestClient(app), TestSession
+    app.include_router(project_routes.setup_project_routes(memory_manager=memory_manager))
+    client = TestClient(app)
+    client.memory_manager = memory_manager
+    return client, TestSession
 
 
 def test_project_crud_is_owner_scoped(monkeypatch, tmp_path):
@@ -192,3 +196,166 @@ def test_project_agents_are_scoped_and_can_be_default(monkeypatch, tmp_path):
     assert deleted.status_code == 200
     project_after = client.get(f"/api/projects/{project['id']}").json()
     assert "default_crew_member_id" not in project_after["settings"]
+
+
+def test_project_bundle_round_trip_is_secret_free(monkeypatch, tmp_path):
+    client, TestSession = _client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"name": "Portable"}).json()
+    agent = client.post(
+        f"/api/projects/{project['id']}/agents",
+        json={"name": "Builder", "model": "qwen", "is_default": True},
+    ).json()
+    db = TestSession()
+    try:
+        session_id = str(uuid.uuid4())
+        db.add(
+            database.Session(
+                id=session_id,
+                owner="alice",
+                project_id=project["id"],
+                name="Project chat",
+                endpoint_url="https://user:secret@example.test/v1",
+                model="qwen",
+                headers={"Authorization": "Bearer secret"},
+            )
+        )
+        db.add(
+            database.ChatMessage(
+                id=str(uuid.uuid4()),
+                session_id=session_id,
+                role="user",
+                content="Build the app",
+            )
+        )
+        db.add(
+            database.ScheduledTask(
+                id=str(uuid.uuid4()),
+                owner="alice",
+                project_id=project["id"],
+                crew_member_id=agent["id"],
+                name="Review",
+                prompt="Review progress",
+                task_type="llm",
+                trigger_type="schedule",
+                schedule="daily",
+                scheduled_time="09:00",
+                endpoint_url="https://token@example.test/v1",
+                webhook_token="secret-webhook",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    memory = client.memory_manager.add_entry(
+        "Portable memory",
+        owner="alice",
+        project_id=project["id"],
+    )
+    client.memory_manager.save([memory])
+    workspace = project_paths.ensure_project_workspace(project["id"])
+    (workspace / "README.txt").write_text("project file", encoding="utf-8")
+
+    overview = client.get(f"/api/projects/{project['id']}/overview").json()
+    assert overview["metrics"]["sessions"] == 1
+    assert overview["metrics"]["agents"] == 1
+    assert overview["metrics"]["tasks"] == 1
+    assert overview["metrics"]["memories"] == 1
+
+    response = client.get(f"/api/projects/{project['id']}/export")
+
+    assert response.status_code == 200, response.text
+    bundle = response.json()
+    serialized = response.text
+    assert bundle["schema"] == "odysseus-project.v1"
+    assert "secret" not in serialized
+    assert "endpoint_url" not in serialized
+    assert len(bundle["sessions"]) == 1
+    assert len(bundle["agents"]) == 1
+    assert len(bundle["tasks"]) == 1
+    assert len(bundle["memories"]) == 1
+    assert len(bundle["files"]) == 1
+
+    imported = client.post("/api/projects/import", json=bundle)
+    assert imported.status_code == 201, imported.text
+    payload = imported.json()
+    assert payload["project"]["name"].startswith("Portable (Imported")
+    assert payload["imported"] == {
+        "sessions": 1,
+        "messages": 1,
+        "agents": 1,
+        "tasks": 1,
+        "memories": 1,
+        "files": 1,
+    }
+    db = TestSession()
+    try:
+        imported_task = db.query(database.ScheduledTask).filter(
+            database.ScheduledTask.project_id == payload["project"]["id"]
+        ).one()
+        assert imported_task.status == "paused"
+        assert imported_task.endpoint_url is None
+        assert imported_task.webhook_token is None
+    finally:
+        db.close()
+
+
+def test_project_import_rejects_traversal_file(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path)
+    bundle = {
+        "schema": "odysseus-project.v1",
+        "project": {"name": "Unsafe", "description": "", "settings": {}},
+        "sessions": [],
+        "agents": [],
+        "tasks": [],
+        "memories": [],
+        "files": [
+            {
+                "path": "../escape.txt",
+                "encoding": "base64",
+                "content": "dGVzdA==",
+            }
+        ],
+    }
+
+    response = client.post("/api/projects/import", json=bundle)
+
+    assert response.status_code == 422
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_assign_existing_sessions_and_memories(monkeypatch, tmp_path):
+    client, TestSession = _client(monkeypatch, tmp_path)
+    project = client.post("/api/projects", json={"name": "Migration"}).json()
+    session_id = str(uuid.uuid4())
+    db = TestSession()
+    try:
+        db.add(
+            database.Session(
+                id=session_id,
+                owner="alice",
+                name="Legacy chat",
+                endpoint_url="",
+                model="",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    memory = client.memory_manager.add_entry("Legacy memory", owner="alice")
+    client.memory_manager.save([memory])
+
+    assigned = client.post(
+        f"/api/projects/{project['id']}/assign",
+        json={"session_ids": [session_id], "memory_ids": [memory["id"]]},
+    )
+
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["assigned_sessions"] == 1
+    assert assigned.json()["assigned_memories"] == 1
+    db = TestSession()
+    try:
+        assert db.get(database.Session, session_id).project_id == project["id"]
+    finally:
+        db.close()
+    stored = client.memory_manager.load_all()
+    assert stored[0]["project_id"] == project["id"]
