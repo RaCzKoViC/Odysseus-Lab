@@ -43,6 +43,18 @@ liveness/readiness/runtime, Ollama, ChromaDB, and SearXNG. URLs are sanitized
 before display. `--strict` also treats an unavailable optional service as a
 failure.
 
+On native Windows, run `venv\Scripts\python.exe scripts\odysseus-doctor --strict`.
+The health and readiness probes require the application's JSON success signals;
+an HTML login page or `ready: false` with HTTP 200 is a failure. A missing data
+directory is also a failure. Relative `ODYSSEUS_DATA_DIR` paths resolve against
+the selected `--repo`, not the shell's current directory.
+
+`AUTH_REQUIRED` on `app_runtime` means its HTTP 401 requires an authenticated
+session. The doctor does not load saved credentials or check those protected
+details. This expected restriction does not degrade an otherwise healthy report,
+including with `--strict`. Authentication errors on public health/readiness or
+other services remain failures.
+
 Authenticated administrators can inspect the deeper service report at
 `GET /api/diagnostics/services` and bounded log tail at
 `GET /api/diagnostics/logs`.
