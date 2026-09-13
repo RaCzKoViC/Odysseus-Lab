@@ -307,6 +307,24 @@ def setup_project_routes() -> APIRouter:
         finally:
             db.close()
 
+    @router.get("/{project_id}/effective-settings")
+    def effective_project_settings(request: Request, project_id: str):
+        owner = _owner(request)
+        db = SessionLocal()
+        try:
+            project = get_owned_project(db, owner, project_id, include_archived=True)
+            settings = project.settings or {}
+            return {
+                "project_id": project.id,
+                "default_endpoint_id": settings.get("default_endpoint_id") or "",
+                "default_model": settings.get("default_model") or "",
+                "default_crew_member_id": settings.get("default_crew_member_id") or "",
+                "memory_mode": settings.get("memory_mode") or "inherit",
+                "instructions": settings.get("instructions") or "",
+            }
+        finally:
+            db.close()
+
     @router.delete("/{project_id}")
     def archive_project(request: Request, project_id: str):
         owner = _owner(request)
