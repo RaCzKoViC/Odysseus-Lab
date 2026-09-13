@@ -80,6 +80,7 @@ def test_list_sessions_excludes_other_users_sessions(monkeypatch):
 def test_list_sessions_filters_by_owned_project(monkeypatch):
     import routes.session_routes as sr
     from unittest.mock import MagicMock
+    from types import SimpleNamespace
 
     _stub_multipart_if_missing(monkeypatch)
     monkeypatch.setattr(sr, "SessionLocal", _TS)
@@ -132,11 +133,11 @@ def test_list_sessions_filters_by_owned_project(monkeypatch):
 
     sm = MagicMock()
     sm.get_sessions_for_user.return_value = {
-        included_id: MagicMock(
+        included_id: SimpleNamespace(
             id=included_id, name="included", model="gpt-4",
             endpoint_url="http://localhost", rag=False, archived=False,
         ),
-        excluded_id: MagicMock(
+        excluded_id: SimpleNamespace(
             id=excluded_id, name="excluded", model="gpt-4",
             endpoint_url="http://localhost", rag=False, archived=False,
         ),
