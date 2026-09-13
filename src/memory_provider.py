@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import inspect
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -176,12 +177,18 @@ class NativeMemoryProvider(MemoryProvider):
         self.memory_manager.save(memories)
 
         if self._vector_available():
-            self.memory_vector.add(
-                entry["id"],
-                entry["text"],
-                owner=owner,
-                project_id=project_id,
-            )
+            add_parameters = inspect.signature(self.memory_vector.add).parameters
+            if "owner" in add_parameters:
+                self.memory_vector.add(
+                    entry["id"],
+                    entry["text"],
+                    owner=owner,
+                    project_id=project_id,
+                )
+            else:
+                # External/legacy vector adapters keep the historical
+                # two-argument protocol.
+                self.memory_vector.add(entry["id"], entry["text"])
 
         return self._to_record(entry)
 
