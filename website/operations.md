@@ -28,6 +28,18 @@ curl --fail http://127.0.0.1:7000/api/version
 The temporary administrator password is printed by
 `docker compose logs odysseus`. Change it after the first login.
 
+### Git Bash on native Windows
+
+The agent's Bash tool requires Git for Windows. Both `launch-windows.ps1` and
+the application discover Bash beside the `git.exe` on `PATH`, including custom
+installations such as `C:\Git\cmd\git.exe` and portable installations with spaces
+in their paths. Standard machine-wide and per-user Git locations remain fallbacks.
+Windows WSL launcher stubs are skipped; WSL is not required for Git Bash.
+
+If Git was installed or its `PATH` entry changed while Odysseus was running,
+restart Odysseus from a terminal that sees the updated `PATH`. The application
+caches Bash discovery until it restarts.
+
 ## Diagnostics
 
 Run the read-only Foundation doctor from the repository root:
