@@ -16,6 +16,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Built-in MCP servers still use the v1 decorator API. Upgrade the SDK
+    # and migrate those servers together in a dedicated change.
+    ignore:
+      - dependency-name: mcp
+        versions: [">=2"]
     groups:
       python:
         patterns: ["*"]
