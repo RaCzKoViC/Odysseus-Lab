@@ -97,6 +97,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         is_tool_render = path.startswith("/api/tools/") and path.endswith("/render")
         # Document library PDF preview endpoint
         is_document_pdf_preview = path.startswith("/api/document/") and path.endswith("/render-pdf")
+        # Chat attachment previews embed PDFs/media served inline by
+        # /api/upload/{id}?inline=1 (only browser-native media types; see
+        # routes/upload_routes.py), so they need the same same-origin framing.
+        if path.startswith("/api/upload/") and request.query_params.get("inline") == "1":
+            is_document_pdf_preview = True
         # Visual report pages are self-contained HTML — need inline scripts + external images
         is_report = path.startswith("/api/research/report/")
 

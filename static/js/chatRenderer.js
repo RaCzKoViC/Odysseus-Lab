@@ -81,6 +81,220 @@ function _formatSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+
+// ── Inline attachment previews ──────────────────────────────────────────────
+// Non-image attachments get a "Preview" toggle that renders the file inside the
+// chat: PDFs and media embed natively (served inline by /api/upload/{id}?inline=1),
+// text-like files come back from /api/upload/{id}/text and render as markdown,
+// a table (CSV/TSV), pretty JSON or a highlighted code block with the same
+// chrome as fenced code in replies. Content loads on demand so restoring a long
+// session does not fetch every attachment.
+const _PREVIEW_AUDIO_RE = /\.(mp3|wav|ogg|oga|m4a|flac|aac|opus)$/i;
+const _PREVIEW_VIDEO_RE = /\.(mp4|webm|mov|m4v|ogv)$/i;
+const _PREVIEW_TEXT_RE = /\.(txt|md|markdown|mdx|json|csv|tsv|log|py|js|mjs|cjs|ts|tsx|jsx|html|htm|css|xml|yml|yaml|toml|ini|cfg|conf|env|sh|bash|zsh|ps1|bat|cmd|sql|c|h|cpp|hpp|cc|java|kt|go|rs|php|rb|swift|r|lua|nix|tex|diff|patch|rst|docx|xlsx|pptx|xls|epub|odt|rtf)$/i;
+const _PREVIEW_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const _PREVIEW_MAX_ROWS = 300;
+const _PREVIEW_MAX_COLS = 60;
+
+function _attachPreviewKind(att) {
+  const name = att.name || '';
+  const mime = (att.mime || '').toLowerCase();
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf';
+  if (mime.startsWith('audio/') || _PREVIEW_AUDIO_RE.test(name)) return 'audio';
+  if (mime.startsWith('video/') || _PREVIEW_VIDEO_RE.test(name)) return 'video';
+  if (mime.startsWith('text/') || _PREVIEW_TEXT_RE.test(name)) return 'text';
+  return null;
+}
+
+// Build the same <pre class="code-block"> a fenced block renders to, from raw
+// text (no markdown round-trip, so a ``` inside the file cannot break it).
+function _buildCodePreview(text, language) {
+  const lines = text ? text.split('\n').length : 0;
+  const threshold = markdownModule.CODE_COLLAPSE_LINES || 24;
+  const collapsed = lines > threshold;
+  const pre = document.createElement('pre');
+  pre.className = 'code-block' + (collapsed ? ' code-collapsed' : '');
+  pre.dataset.lines = String(lines);
+  const head = document.createElement('span');
+  head.className = 'code-head';
+  const lang = document.createElement('span');
+  lang.className = 'code-lang';
+  lang.textContent = language || 'text';
+  const tools = document.createElement('span');
+  tools.className = 'code-tools';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'copy-code';
+  copy.title = 'Copy code';
+  copy.setAttribute('aria-label', 'Copy code');
+  copy.setAttribute('data-code', text);
+  copy.innerHTML = COPY_ICON;
+  tools.appendChild(copy);
+  head.appendChild(lang);
+  head.appendChild(tools);
+  pre.appendChild(head);
+  const code = document.createElement('code');
+  if (language && language !== 'plaintext') code.className = 'language-' + language;
+  code.dataset.lang = language || '';
+  code.textContent = text;
+  pre.appendChild(code);
+  if (collapsed) {
+    const expand = document.createElement('button');
+    expand.type = 'button';
+    expand.className = 'code-expand';
+    expand.setAttribute('aria-expanded', 'false');
+    expand.title = 'Show the whole block';
+    expand.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg><span class="code-expand-label">Show all ' + lines + ' lines</span>';
+    pre.appendChild(expand);
+  }
+  if (window.hljs && language && language !== 'plaintext') {
+    try { window.hljs.highlightElement(code); } catch (_) { /* highlighting is cosmetic */ }
+  }
+  return pre;
+}
+
+// Minimal RFC 4180-ish parser: quoted fields, doubled quotes, CR/LF rows.
+function _parseDelimited(text, delim) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else quoted = false;
+      } else field += ch;
+      continue;
+    }
+    if (ch === '"') quoted = true;
+    else if (ch === delim) { row.push(field); field = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      rows.push(row); row = [];
+      if (rows.length > _PREVIEW_MAX_ROWS) break;
+    } else field += ch;
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+function _buildTablePreview(text, name) {
+  const delim = /\.tsv$/i.test(name || '') ? '\t' : (text.split('\n', 1)[0].includes(';') && !text.split('\n', 1)[0].includes(',') ? ';' : ',');
+  const rows = _parseDelimited(text, delim);
+  const wrap = document.createElement('div');
+  wrap.className = 'attach-preview-table';
+  const table = document.createElement('table');
+  const cap = rows.slice(0, _PREVIEW_MAX_ROWS);
+  cap.forEach((cells, idx) => {
+    const tr = document.createElement('tr');
+    cells.slice(0, _PREVIEW_MAX_COLS).forEach((cell) => {
+      const td = document.createElement(idx === 0 ? 'th' : 'td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    (idx === 0 ? table.appendChild(document.createElement('thead')) : (table.querySelector('tbody') || table.appendChild(document.createElement('tbody')))).appendChild(tr);
+  });
+  wrap.appendChild(table);
+  if (rows.length > _PREVIEW_MAX_ROWS) {
+    const note = document.createElement('div');
+    note.className = 'attach-preview-note';
+    note.textContent = 'Showing the first ' + _PREVIEW_MAX_ROWS + ' rows.';
+    wrap.appendChild(note);
+  }
+  return wrap;
+}
+
+function _renderMarkdownPreview(text) {
+  const el = document.createElement('div');
+  el.className = 'attach-preview-md body';
+  el.innerHTML = markdownModule.mdToHtml(text || '');
+  if (window.hljs) el.querySelectorAll('pre code').forEach((b) => { try { window.hljs.highlightElement(b); } catch (_) {} });
+  if (markdownModule.renderMermaid) { try { markdownModule.renderMermaid(el); } catch (_) {} }
+  return el;
+}
+
+async function _fillAttachPreview(box, att, kind) {
+  box.innerHTML = '';
+  if (kind === 'pdf') {
+    const frame = document.createElement('iframe');
+    frame.className = 'attach-preview-frame';
+    frame.title = att.name || 'PDF preview';
+    frame.src = '/api/upload/' + encodeURIComponent(att.id) + '?inline=1#toolbar=0';
+    box.appendChild(frame);
+    return;
+  }
+  if (kind === 'audio' || kind === 'video') {
+    const media = document.createElement(kind);
+    media.controls = true;
+    media.preload = 'metadata';
+    media.src = '/api/upload/' + encodeURIComponent(att.id) + '?inline=1';
+    box.appendChild(media);
+    return;
+  }
+  const loading = document.createElement('div');
+  loading.className = 'attach-preview-loading';
+  loading.textContent = 'Loading preview\u2026';
+  box.appendChild(loading);
+  let data;
+  try {
+    const res = await fetch('/api/upload/' + encodeURIComponent(att.id) + '/text', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(res.status === 415 ? 'No preview for this file type.' : ('Preview failed (' + res.status + ').'));
+    data = await res.json();
+  } catch (err) {
+    loading.className = 'attach-preview-error';
+    loading.textContent = (err && err.message) || 'Preview failed.';
+    return;
+  }
+  box.innerHTML = '';
+  const text = data.text || '';
+  if (data.kind === 'markdown' || data.kind === 'document') {
+    box.appendChild(_renderMarkdownPreview(text));
+  } else if (data.kind === 'table') {
+    box.appendChild(_buildTablePreview(text, att.name));
+  } else if (data.kind === 'json') {
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (_) { /* show as-is */ }
+    box.appendChild(_buildCodePreview(pretty, 'json'));
+  } else {
+    box.appendChild(_buildCodePreview(text, data.language || 'plaintext'));
+  }
+  if (data.truncated) {
+    const note = document.createElement('div');
+    note.className = 'attach-preview-note';
+    note.textContent = 'Preview truncated; open the file for the full content.';
+    box.appendChild(note);
+  }
+}
+
+function _attachPreviewToggle(card, att, kind) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'attach-preview-btn';
+  btn.title = 'Show a preview in the chat';
+  btn.innerHTML = _PREVIEW_ICON + '<span>Preview</span>';
+  let box = null;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'attach-preview';
+      box.dataset.fileId = att.id;
+      card.insertAdjacentElement('afterend', box);
+      _fillAttachPreview(box, att, kind);
+    } else {
+      box.hidden = !box.hidden;
+    }
+    const open = box && !box.hidden;
+    btn.querySelector('span').textContent = open ? 'Hide' : 'Preview';
+    btn.title = open ? 'Hide the preview' : 'Show a preview in the chat';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  return btn;
+}
+
 // Build the `.attach-cards` element for a message's attachment list. Shared by
 // addMessage and updateMessageAttachments so a live (optimistic) user bubble
 // can be re-rendered with real upload ids once the upload resolves.
@@ -215,6 +429,8 @@ export function buildAttachCards(attachments) {
         sizeSpan.textContent = _formatSize(att.size);
         card.appendChild(sizeSpan);
       }
+      const previewKind = att.id ? _attachPreviewKind(att) : null;
+      if (previewKind) card.appendChild(_attachPreviewToggle(card, att, previewKind));
       attachWrap.appendChild(card);
     }
   }
@@ -1773,8 +1989,12 @@ export function createMsgFooter(msgElement) {
     if (bi >= 0) return 1;
     return 0;
   });
-  const visible = sorted.slice(0, _MAX_VISIBLE);
-  const overflow = sorted.slice(_MAX_VISIBLE);
+  // Copy is always the first visible button, so every reply ends with a copy
+  // control regardless of which actions were used most recently.
+  const copyAction = sorted.find(a => a.id === 'copy');
+  const others = sorted.filter(a => a.id !== 'copy');
+  const visible = copyAction ? [copyAction, ...others.slice(0, _MAX_VISIBLE - 1)] : sorted.slice(0, _MAX_VISIBLE);
+  const overflow = copyAction ? others.slice(_MAX_VISIBLE - 1) : sorted.slice(_MAX_VISIBLE);
 
   // Render visible buttons
   function _addBtn(action, container) {

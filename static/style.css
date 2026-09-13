@@ -41399,3 +41399,530 @@ body.settings-sidebar-resize-active {
     display: none;
   }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   Liquid Glass theme (Odysseus-Lab)
+
+   Activated by the "Liquid Glass" preset in static/js/theme.js. The preset
+   switches on the frosted-glass mode above (translucent, blurred panels), sets
+   the `liquid` wallpaper pattern and adds `body.theme-liquid-glass`. The rules
+   below add what frosted glass alone does not:
+
+     - a backlit wallpaper behind the whole app (the `liquid` pattern, which
+       any theme can pick from Theme -> Background);
+     - specular edge highlights on every glass surface;
+     - pill-shaped sidebar navigation and a glowing New Chat entry;
+     - a glowing brand wordmark and composer;
+     - contrast guards so icons, sliders, inputs and labels stay readable over
+       the blurred wallpaper.
+
+   Everything derives from the theme tokens (--bg, --fg, --panel, --border,
+   --red, --brand-color, --input-bg, ...) so custom themes and the advanced
+   color overrides keep working.
+   ═════════════════════════════════════════════════════════════════════════════ */
+
+/* Wallpaper pattern. Painted on <body> like the other static patterns so the
+   transparent chat area shows it through. The two radial washes tint the
+   photo with the active accent so a recolored theme still reads as one set. */
+body.bg-pattern-liquid {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(60% 70% at 18% 82%, color-mix(in srgb, var(--red) 28%, transparent), transparent 70%),
+    radial-gradient(45% 55% at 84% 18%, color-mix(in srgb, var(--red) 20%, transparent), transparent 70%),
+    url("/static/backgrounds/liquid-glass.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* Stronger secondary text: the frosted blur lowers effective contrast, so the
+   muted tokens step up from their solid-theme values. */
+body.theme-liquid-glass {
+  --color-muted: color-mix(in srgb, var(--fg) 72%, transparent);
+  --color-muted-alt: color-mix(in srgb, var(--fg) 64%, transparent);
+  --lg-edge: color-mix(in srgb, #fff 20%, transparent);
+  --lg-edge-strong: color-mix(in srgb, #fff 34%, transparent);
+  --lg-fill: color-mix(in srgb, #fff 7%, transparent);
+  --lg-fill-hover: color-mix(in srgb, #fff 12%, transparent);
+  --lg-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --lg-glow: color-mix(in srgb, var(--brand-color, var(--red)) 45%, transparent);
+}
+
+/* Specular edges on the heavy glass surfaces the frosted mode already blurs. */
+body.theme-liquid-glass #sidebar,
+body.theme-liquid-glass .modal-content,
+body.theme-liquid-glass .doclib-modal-content,
+body.theme-liquid-glass .gallery-modal-content,
+body.theme-liquid-glass .notes-pane,
+body.theme-liquid-glass .research-pane,
+body.theme-liquid-glass .calendar-pane,
+body.theme-liquid-glass .cookbook-pane,
+body.theme-liquid-glass .doc-pane,
+body.theme-liquid-glass .doc-pane-floating,
+body.theme-liquid-glass .dropdown,
+body.theme-liquid-glass .overflow-menu,
+body.theme-liquid-glass .cp-popover,
+body.theme-liquid-glass .msg-overflow-menu,
+body.theme-liquid-glass #theme-popup .modal-content {
+  border: 1px solid var(--lg-edge) !important;
+  box-shadow:
+    inset 0 1px 0 var(--lg-edge-strong),
+    inset 0 0 0 1px color-mix(in srgb, #fff 4%, transparent),
+    var(--lg-shadow) !important;
+}
+body.theme-liquid-glass #sidebar {
+  border-radius: 0 18px 18px 0;
+  border-left: none !important;
+}
+body.theme-liquid-glass .sidebar.right-side {
+  border-radius: 18px 0 0 18px;
+  border-right: none !important;
+}
+body.theme-liquid-glass #icon-rail,
+body.theme-liquid-glass .icon-rail {
+  background-color: color-mix(in srgb, var(--panel) 38%, transparent) !important;
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  border-color: var(--lg-edge) !important;
+}
+
+/* Sidebar navigation as glass pills. */
+body.theme-liquid-glass #sidebar .list-item {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+body.theme-liquid-glass #sidebar .list-item:hover {
+  background: var(--lg-fill-hover);
+  border-color: var(--lg-edge);
+}
+body.theme-liquid-glass #sidebar .list-item.active,
+body.theme-liquid-glass #sidebar .list-item.active-session {
+  background: color-mix(in srgb, var(--red) 22%, transparent);
+  border-color: color-mix(in srgb, var(--red) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent),
+    0 6px 18px color-mix(in srgb, var(--red) 22%, transparent);
+}
+body.theme-liquid-glass #sidebar-new-chat-btn {
+  border-radius: 999px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--red) 42%, transparent),
+    color-mix(in srgb, var(--red) 18%, transparent));
+  border: 1px solid color-mix(in srgb, var(--red) 58%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent),
+    0 8px 24px color-mix(in srgb, var(--red) 28%, transparent);
+}
+body.theme-liquid-glass #sidebar-new-chat-btn:hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--red) 52%, transparent),
+    color-mix(in srgb, var(--red) 26%, transparent));
+}
+body.theme-liquid-glass #sidebar-new-chat-btn .sidebar-action-icon,
+body.theme-liquid-glass #sidebar-new-chat-btn .grow {
+  color: var(--fg);
+}
+
+/* Brand: glowing wordmark in the sidebar, welcome screen and login page. */
+body.theme-liquid-glass .sidebar-brand-title {
+  text-shadow: 0 0 18px var(--lg-glow);
+}
+body.theme-liquid-glass #welcome-screen .welcome-name {
+  /* Gradient text uses background-clip, so glow goes through filter. */
+  filter: drop-shadow(0 0 22px var(--lg-glow));
+}
+body.theme-liquid-glass .welcome-boat {
+  filter: drop-shadow(0 0 10px var(--lg-glow));
+}
+body.theme-liquid-glass #welcome-screen .welcome-sub,
+body.theme-liquid-glass #welcome-screen .welcome-tip {
+  color: var(--fg);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.55);
+}
+body.theme-liquid-glass #welcome-screen .welcome-tip { opacity: 0.85; }
+
+/* Chat header pill ("New Chat" name + menu) reads over the wallpaper. */
+body.theme-liquid-glass .chat-meta-overlay #current-meta {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--lg-fill);
+  border: 1px solid var(--lg-edge);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  color: var(--fg);
+}
+
+/* Message bubbles: light glass instead of solid panels. */
+body.theme-liquid-glass .msg-ai {
+  background: color-mix(in srgb, var(--ai-bubble-bg, var(--panel)) 58%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 12%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent), 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+body.theme-liquid-glass .msg-user {
+  background: color-mix(in srgb, var(--user-bubble-bg, var(--bg)) 62%, transparent);
+  border: 1px solid color-mix(in srgb, #fff 14%, transparent);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent), 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+/* Composer: glass bar with a soft accent halo (the wallpaper's light catching
+   the edge of the glass). */
+body.theme-liquid-glass .chat-input-bar {
+  background: color-mix(in srgb, var(--input-bg, var(--panel)) 46%, transparent);
+  border: 1px solid var(--lg-edge);
+  border-radius: 18px;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 var(--lg-edge-strong),
+    0 0 0 1px color-mix(in srgb, var(--red) 26%, transparent),
+    0 14px 40px rgba(0, 0, 0, 0.45),
+    0 0 46px color-mix(in srgb, var(--red) 16%, transparent);
+}
+body.theme-liquid-glass .chat-input-bar:focus-within {
+  box-shadow:
+    inset 0 1px 0 var(--lg-edge-strong),
+    0 0 0 1px color-mix(in srgb, var(--red) 48%, transparent),
+    0 14px 40px rgba(0, 0, 0, 0.45),
+    0 0 56px color-mix(in srgb, var(--red) 26%, transparent);
+}
+body.theme-liquid-glass .chat-input-bar textarea,
+body.theme-liquid-glass .chat-input-bar textarea::placeholder {
+  color: var(--fg);
+}
+body.theme-liquid-glass .chat-input-bar textarea::placeholder { opacity: 0.55; }
+body.theme-liquid-glass .input-icon-btn {
+  background: var(--lg-fill);
+  border: 1px solid var(--lg-edge);
+  color: var(--fg);
+  border-radius: 10px;
+}
+body.theme-liquid-glass .input-icon-btn:hover { background: var(--lg-fill-hover); }
+body.theme-liquid-glass .mode-toggle {
+  background: var(--lg-fill);
+  border: 1px solid var(--lg-edge);
+  border-radius: 999px;
+}
+body.theme-liquid-glass .mode-toggle-btn { color: var(--color-muted); }
+body.theme-liquid-glass .mode-toggle-btn.active {
+  background: color-mix(in srgb, #fff 18%, transparent);
+  color: var(--fg);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 24%, transparent);
+}
+body.theme-liquid-glass .send-btn {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--send-btn-bg, var(--red)) 82%, #fff),
+    var(--send-btn-bg, var(--red)));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 40%, transparent),
+    0 6px 20px color-mix(in srgb, var(--red) 40%, transparent);
+}
+body.theme-liquid-glass .send-btn:hover {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--send-btn-hover, var(--red)) 78%, #fff),
+    var(--send-btn-hover, var(--red)));
+}
+
+/* Form controls: translucent fields with a visible edge; sliders and checks
+   take the accent so they never vanish into the blur. */
+body.theme-liquid-glass input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]),
+body.theme-liquid-glass select,
+body.theme-liquid-glass textarea {
+  background-color: color-mix(in srgb, var(--panel) 62%, transparent);
+  border-color: var(--lg-edge);
+  color: var(--fg);
+}
+body.theme-liquid-glass input[type="range"] { accent-color: var(--red); }
+body.theme-liquid-glass input[type="checkbox"],
+body.theme-liquid-glass input[type="radio"] { accent-color: var(--red); }
+body.theme-liquid-glass .theme-fd-range::-webkit-slider-runnable-track {
+  background: color-mix(in srgb, #fff 26%, transparent);
+}
+
+/* Code keeps an almost opaque dark ground: syntax colors need it. */
+body.theme-liquid-glass pre {
+  background: color-mix(in srgb, var(--code-bg, var(--hl-bg, #0a0f1c)) 92%, transparent) !important;
+  border: 1px solid color-mix(in srgb, #fff 9%, transparent);
+}
+
+/* Inner cards inside glass modals: faint fill + edge instead of a solid panel. */
+body.theme-liquid-glass .admin-card {
+  border: 1px solid color-mix(in srgb, #fff 9%, transparent) !important;
+}
+
+/* Accessibility: honor the OS "reduce transparency" preference by giving the
+   glass surfaces a nearly solid fill and dropping the expensive blur. */
+@media (prefers-reduced-transparency: reduce) {
+  body.theme-liquid-glass #sidebar,
+  body.theme-liquid-glass .modal-content,
+  body.theme-liquid-glass .chat-input-bar,
+  body.theme-liquid-glass .msg-ai,
+  body.theme-liquid-glass .msg-user {
+    background-color: color-mix(in srgb, var(--panel) 92%, transparent) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   Code block chrome (Odysseus-Lab)
+
+   Every fenced block renders as <pre class="code-block"> with a header row:
+   the language label on the left and the tool buttons (Run / Edit /
+   Regenerate / Copy) on the right. The header is sticky, so the buttons stay
+   reachable inside long blocks. Blocks longer than the collapse threshold
+   (markdown.js CODE_COLLAPSE_LINES) open inside a small scrolling frame and
+   stream into it; the footer toggle expands them. The old floating overlay
+   buttons still exist for blocks rendered elsewhere (Cookbook output, slash
+   previews); these rules only touch `.code-block`.
+   ═════════════════════════════════════════════════════════════════════════════ */
+pre.code-block {
+  padding: 0 !important;
+  overflow: hidden;
+  border-radius: 10px;
+}
+pre.code-block .code-head {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 3px 6px 3px 12px;
+  margin: 0;
+  white-space: normal;
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--code-fg, var(--fg)) 62%, transparent);
+  background: color-mix(in srgb, var(--fg) 7%, var(--code-bg, var(--hl-bg, #282c34)));
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+}
+pre.code-block .code-lang {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+pre.code-block .code-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+pre.code-block .code-tools .copy-code,
+pre.code-block .code-tools .edit-code,
+pre.code-block .code-tools .run-code,
+pre.code-block .code-tools .regen-code {
+  position: static !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background-color .15s;
+}
+pre.code-block .code-tools button:hover {
+  color: var(--fg);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+pre.code-block .code-tools button svg { width: 14px; height: 14px; display: inline !important; }
+/* The slim single-line variant (pre-compact) swaps icons for text labels via
+   pseudo-elements; the header keeps icons so every block looks the same. */
+pre.code-block .code-tools .copy-code::before,
+pre.code-block .code-tools .copy-code::after,
+pre.code-block .code-tools .edit-code::after,
+pre.code-block .code-tools .run-code::after { content: none !important; }
+pre.code-block.pre-compact { padding-right: 0 !important; min-height: 0; }
+pre.code-block .code-tools .copy-code.copied {
+  color: var(--color-save-green, #4caf50);
+  border-color: var(--color-save-green, #4caf50);
+}
+/* Regenerate only makes sense inside an assistant reply. */
+pre.code-block .regen-code { display: none; }
+.msg-ai pre.code-block .regen-code { display: inline-flex; }
+pre.code-block > code {
+  display: block;
+  padding: 10px 14px 12px;
+}
+/* The mobile tap-to-hide behaviour for overlay buttons is moot with a header. */
+pre.code-block.buttons-hidden .code-tools button {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+/* Keep the EDITING badge below the header instead of under it. */
+pre.code-block.editing::before { top: 40px; }
+
+/* Collapsed frame: long code streams inside a small scrolling window. */
+pre.code-block.code-collapsed {
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+pre.code-block .code-expand {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+  background: color-mix(in srgb, var(--fg) 7%, var(--code-bg, var(--hl-bg, #282c34)));
+  color: color-mix(in srgb, var(--code-fg, var(--fg)) 75%, transparent);
+  font-family: 'Fira Code', 'Courier New', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: normal;
+}
+pre.code-block .code-expand:hover { color: var(--fg); }
+pre.code-block .code-expand svg { width: 13px; height: 13px; transition: transform .15s; }
+pre.code-block:not(.code-collapsed) .code-expand svg { transform: rotate(180deg); }
+/* Streaming: pulsing dot in the header while the fence is still open. */
+pre.code-block .code-streaming-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin: 0 9px;
+  background: var(--red);
+  animation: code-stream-pulse 1s ease-in-out infinite;
+}
+@keyframes code-stream-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  pre.code-block .code-streaming-dot { animation: none; }
+}
+
+/* ── Floating jump arrows for long replies (static/js/scrollJump.js) ──
+   Reuses the shell's .scroll-nav-btn chrome (#scroll-bottom-btn becomes the
+   down arrow); the wrapper anchors both arrows just above the composer. */
+.scroll-jump {
+  position: absolute;
+  right: 26px;
+  bottom: var(--scroll-jump-bottom, 150px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+.scroll-jump .scroll-nav-btn {
+  position: static;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+}
+.scroll-jump .scroll-nav-btn.show,
+.scroll-jump .scroll-nav-btn:focus-visible {
+  opacity: 0.94;
+  transform: none;
+  pointer-events: auto;
+}
+.scroll-jump .scroll-nav-btn:hover { opacity: 1; color: var(--red); }
+.scroll-jump .scroll-nav-btn svg { width: 16px; height: 16px; }
+@media (max-width: 768px) { .scroll-jump { right: 14px; } }
+@media (prefers-reduced-motion: reduce) { .scroll-jump .scroll-nav-btn { transition: none; } }
+body.theme-liquid-glass .scroll-jump .scroll-nav-btn {
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: inset 0 1px 0 var(--lg-edge-strong), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   Inline attachment previews (Odysseus-Lab)
+
+   Non-image attachments carry a "Preview" toggle (chatRenderer.js
+   buildAttachCards). PDFs and media embed natively; text-like files come back
+   from /api/upload/{id}/text and render as markdown, a table (CSV/TSV), pretty
+   JSON or a highlighted code block with the same chrome as fenced code in
+   replies. Content loads on demand.
+   ═════════════════════════════════════════════════════════════════════════════ */
+.attach-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--bubble-border, var(--border));
+  background: transparent;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity .15s, color .15s, border-color .15s;
+}
+.attach-preview-btn:hover { opacity: 1; color: var(--red); border-color: var(--red); }
+.attach-preview-btn svg { width: 12px; height: 12px; }
+.attach-preview {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: min(520px, 100%);
+  border: 1px solid var(--bubble-border, var(--border));
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.attach-preview[hidden] { display: none; }
+.attach-preview-md {
+  padding: 10px 14px;
+  max-height: 520px;
+  overflow: auto;
+  font-size: 0.95em;
+}
+.attach-preview-table { max-height: 440px; overflow: auto; }
+.attach-preview-table table { border-collapse: collapse; width: 100%; font-size: 12px; margin: 0; }
+.attach-preview-table th,
+.attach-preview-table td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.attach-preview-table th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.attach-preview-frame { display: block; width: 100%; height: 460px; border: 0; background: #fff; }
+.attach-preview video { display: block; width: 100%; max-height: 440px; background: #000; }
+.attach-preview audio { display: block; width: 100%; padding: 8px; box-sizing: border-box; }
+.attach-preview pre.code-block { margin: 0; border: 0; border-radius: 0; }
+.attach-preview-note {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--color-muted-alt);
+  border-top: 1px solid var(--border);
+}
+.attach-preview-error { padding: 10px 12px; font-size: 12px; color: var(--color-muted-alt); }
+.attach-preview-loading { padding: 10px 12px; font-size: 12px; color: var(--color-muted-alt); }
+body.theme-liquid-glass .attach-preview {
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  border-color: var(--lg-edge);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}

@@ -22,6 +22,12 @@
 
 import { splitFinalized, describeOpenFence } from './streamingSegmenter.js';
 
+// Mirrors markdown.js CODE_COLLAPSE_LINES: once an open fence has streamed this
+// many lines it keeps writing inside a small scrolling frame (pre.code-collapsed)
+// instead of growing the page. The finished block gets the same treatment
+// from markdown.js, so the frame does not jump when the fence closes.
+const CODE_COLLAPSE_LINES = 24;
+
 // Compile-time escape hatch: set to false to force the plain full-re-render path.
 // (The per-instance try/catch `degraded` fallback below is the runtime safety net.)
 const ENABLED = true;
@@ -85,19 +91,44 @@ export function createStreamRenderer(contentEl, { render, hljs } = {}) {
     if (!appendMode) {
       clearTail();
       const pre = document.createElement('pre');
+      pre.className = 'code-block code-streaming';
+      // Same header the finished block renders with (markdown.js), minus the
+      // tool buttons: the code is not final yet, so a pulsing dot stands in.
+      const head = document.createElement('span');
+      head.className = 'code-head';
+      const langEl = document.createElement('span');
+      langEl.className = 'code-lang';
+      langEl.textContent = fence.lang || 'code';
+      const tools = document.createElement('span');
+      tools.className = 'code-tools';
+      const dot = document.createElement('span');
+      dot.className = 'code-streaming-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      tools.appendChild(dot);
+      head.appendChild(langEl);
+      head.appendChild(tools);
+      pre.appendChild(head);
       const code = document.createElement('code');
       if (fence.lang) code.className = `language-${fence.lang}`;
       const textNode = document.createTextNode('');
       code.appendChild(textNode);
       pre.appendChild(code);
       contentEl.appendChild(pre);
-      appendMode = { codeText: textNode, appendedLen: 0 };
+      appendMode = { codeText: textNode, appendedLen: 0, pre, lines: 1, collapsed: false };
       tailShownLen = 0; // code is never faded; prose after the fence fades fresh
     }
     const code = tailText.slice(fence.contentStart);
     if (code.length > appendMode.appendedLen) {
-      appendMode.codeText.appendData(code.slice(appendMode.appendedLen));
+      const chunk = code.slice(appendMode.appendedLen);
+      appendMode.codeText.appendData(chunk);
       appendMode.appendedLen = code.length;
+      for (let i = 0; i < chunk.length; i++) if (chunk.charCodeAt(i) === 10) appendMode.lines++;
+      if (!appendMode.collapsed && appendMode.lines > CODE_COLLAPSE_LINES) {
+        appendMode.collapsed = true;
+        appendMode.pre.classList.add('code-collapsed');
+      }
+      // Keep the newest line in view inside the small frame.
+      if (appendMode.collapsed) appendMode.pre.scrollTop = appendMode.pre.scrollHeight;
     }
   }
 

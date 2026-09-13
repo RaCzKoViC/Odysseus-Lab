@@ -4645,7 +4645,7 @@ import { loadPanel } from './panels.js';
             if (_box && sessionModule.getCurrentSessionId() === _timeoutSessionId) {
               var _timeoutMsg = document.createElement('div');
               _timeoutMsg.className = 'msg msg-ai';
-              _timeoutMsg.innerHTML = '<div class="role">Odysseus-Lab</div><div class="body" style="opacity:0.6;font-style:italic;">Research clarification timed out. Toggle research again to start over.</div>';
+              _timeoutMsg.innerHTML = '<div class="role">Odysseus - Lab</div><div class="body" style="opacity:0.6;font-style:italic;">Research clarification timed out. Toggle research again to start over.</div>';
               _box.appendChild(_timeoutMsg);
               uiModule.scrollHistory();
             }
@@ -5320,7 +5320,7 @@ import { loadPanel } from './panels.js';
         // CSS ::before — swap it via data-state so we don't break the
         // text-button layout.
         const origHTML = btn.innerHTML;
-        const isCompact = !!btn.closest('pre.pre-compact');
+        const isCompact = !!btn.closest('pre.pre-compact') && !btn.closest('.code-tools');
         if (!isCompact) {
           btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
         }
@@ -5332,6 +5332,32 @@ import { loadPanel } from './panels.js';
           delete btn.dataset.state;
         }, 1500);
       }
+    });
+
+    // Long code blocks render inside a small frame; the footer toggle opens
+    // them fully (markdown.js sets .code-collapsed past CODE_COLLAPSE_LINES).
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.code-expand');
+      if (!btn) return;
+      e.stopPropagation();
+      const pre = btn.closest('pre');
+      if (!pre) return;
+      const open = !pre.classList.toggle('code-collapsed');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      btn.title = open ? 'Collapse this block' : 'Show the whole block';
+      const label = btn.querySelector('.code-expand-label');
+      if (label) label.textContent = open ? 'Collapse' : ('Show all ' + (pre.dataset.lines || '') + ' lines');
+      if (!open) pre.scrollTop = 0;
+    });
+
+    // Regenerate the reply straight from a code block header (assistant
+    // messages only; the button is hidden elsewhere by CSS).
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.regen-code');
+      if (!btn) return;
+      e.stopPropagation();
+      const msg = btn.closest('.msg-ai');
+      if (msg) regenerateFrom(msg);
     });
 
     // Run code button delegation
@@ -5390,7 +5416,7 @@ import { loadPanel } from './panels.js';
     // Tapping a code block body (not its buttons) toggles the overlay
     // copy/edit/run buttons, which otherwise cover the text on mobile.
     document.addEventListener('click', (e) => {
-      if (e.target.closest('.copy-code, .edit-code, .run-code')) return;
+      if (e.target.closest('.copy-code, .edit-code, .run-code, .regen-code, .code-expand, .code-head')) return;
       const pre = e.target.closest('pre');
       if (!pre || !pre.querySelector('.copy-code')) return;
       // Don't hide while editing — the buttons (incl. the Done checkmark) matter.

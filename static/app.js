@@ -520,7 +520,7 @@ function initializeEventListeners() {
       e.stopPropagation();
       exportMenu.classList.remove('open');
       const meta = sessionModule.getSessions().find(s => s.id === sessionModule.getCurrentSessionId());
-      const sessionName = meta ? meta.name : 'Odysseus-Lab Chat';
+      const sessionName = meta ? meta.name : 'Odysseus - Lab Chat';
       const originalTitle = document.title;
       document.title = sessionName;
       const chatHistory = document.getElementById('chat-history');
@@ -2418,7 +2418,7 @@ function initializeEventListeners() {
 	        textarea.setAttribute('placeholder', 'Swipe to toggle plan');
 	        return;
 	      }
-	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message...' : 'Message Odysseus-Lab...');
+	      textarea.setAttribute('placeholder', width < PLACEHOLDER_COMPACT_WIDTH ? 'Message...' : 'Message Odysseus - Lab...');
 	    }
 
 	    if (_isMobile && textarea && !textarea._odysseusPlanPlaceholderHint) {
