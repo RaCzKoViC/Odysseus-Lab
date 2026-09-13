@@ -117,17 +117,16 @@ where you run it matters:
   recommended, because `backups/` is not a mounted volume and the tarball would
   be lost when the container is recreated.
 
-> **ChromaDB caveat (Docker only).** In the Docker setup, ChromaDB stores its
-> vectors in a separate Compose-managed volume (declared as `chromadb-data`),
-> **not** under `./data`. `odysseus-backup` therefore does not capture the Docker
-> ChromaDB store. Back it up separately if you need it. Compose prefixes the
-> volume with the project name, so find the real name first
-> (`docker volume ls | grep chromadb`), then archive it — for example:
->
-> ```bash
-> docker run --rm -v <project>_chromadb-data:/data -v "$PWD":/backup \
->   alpine tar czf /backup/chromadb.tar.gz -C /data .
-> ```
->
-> On native installs ChromaDB lives at `data/chroma/` and is included in the
-> snapshot normally.
+In Docker, ChromaDB stores vectors in a separate Compose-managed volume. Use
+the Foundation wrapper to capture both stores in one checksummed bundle:
+
+```bash
+./scripts/odysseus-compose-backup snapshot
+./scripts/odysseus-compose-backup restore backups/odysseus-compose-TIMESTAMP.tar.gz --yes
+```
+
+The wrapper briefly stops the app and ChromaDB for a consistent snapshot,
+restarts only services that were running, and validates exact members and
+checksums before restore. See [`docs/OPERATIONS.md`](https://github.com/RaCzKoViC/Odysseus-Lab/blob/main/docs/OPERATIONS.md)
+for the complete procedure. On native installs ChromaDB lives at
+`data/chroma/` and remains part of the normal app-data snapshot.
