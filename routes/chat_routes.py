@@ -28,6 +28,7 @@ from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
     maybe_compact,
+    trim_for_context,
 )
 from src.context_engine.budget import shape_messages_for_route
 from src.chat_helpers import coerce_message_and_session
@@ -216,6 +217,9 @@ def _chat_candidate_request_factory(
             model=candidate_model,
             fallback_context_length=context_length,
             output_reserve=512,
+            trim_function=trim_for_context,
+            context_length_override=context_length,
+            context_known_override=True,
         )
         state["requests"][index] = request_messages
         state["context_lengths"][index] = budget_plan.context_length
@@ -2259,7 +2263,7 @@ def setup_chat_routes(
                             if full_response:
                                 _commit_chat_compaction(_actual_candidate_index)
                                 _metrics_to_save = dict(last_metrics or {})
-                                if ctx.context_budget_plan:
+                                if getattr(ctx, "context_budget_plan", None):
                                     _metrics_to_save.setdefault(
                                         "context_budget_plan",
                                         ctx.context_budget_plan,
@@ -2534,7 +2538,7 @@ def setup_chat_routes(
                             if full_response or _has_tool_events:
                                 _response_to_save = full_response or "Done."
                                 _metrics_to_save = dict(last_metrics or {})
-                                if ctx.context_budget_plan:
+                                if getattr(ctx, "context_budget_plan", None):
                                     _metrics_to_save.setdefault(
                                         "context_budget_plan",
                                         ctx.context_budget_plan,

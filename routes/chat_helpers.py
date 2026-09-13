@@ -14,7 +14,7 @@ from core.database import SessionLocal
 from core.database import Session as DBSession, ModelEndpoint
 from src.llm_core import normalize_model_id
 from src.endpoint_resolver import normalize_base
-from src.context_compactor import maybe_compact
+from src.context_compactor import maybe_compact, trim_for_context
 from src.context_engine.budget import shape_messages_for_route
 from src.model_context import estimate_tokens, get_context_length
 from src.auth_helpers import effective_user
@@ -806,6 +806,9 @@ async def build_chat_context(
             model=sess.model,
             fallback_context_length=context_length,
             output_reserve=512,
+            trim_function=trim_for_context,
+            context_length_override=context_length,
+            context_known_override=True,
         )
         context_length = route_budget_plan.context_length
         context_budget_plan = route_budget_plan.to_dict()

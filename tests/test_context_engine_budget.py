@@ -1,4 +1,5 @@
 import src.context_engine.budget as budget_module
+import src.model_context as model_context
 from src.context_engine.budget import estimate_schema_tokens, shape_messages_for_route
 
 
@@ -11,7 +12,7 @@ def _messages(chars=12000):
 
 def test_schema_tokens_reduce_route_message_window(monkeypatch):
     monkeypatch.setattr(
-        budget_module,
+        model_context,
         "get_context_length_known",
         lambda endpoint, model: (8192, True),
     )
@@ -42,9 +43,14 @@ def test_schema_tokens_reduce_route_message_window(monkeypatch):
 
 def test_agent_unknown_window_keeps_conservative_soft_budget(monkeypatch):
     monkeypatch.setattr(
-        budget_module,
+        model_context,
         "get_context_length_known",
         lambda endpoint, model: (128000, False),
+    )
+    monkeypatch.setattr(
+        model_context,
+        "budget_context_for_model",
+        lambda endpoint, model, fallback=0: 0,
     )
 
     _, plan = shape_messages_for_route(
@@ -64,9 +70,14 @@ def test_agent_unknown_window_keeps_conservative_soft_budget(monkeypatch):
 
 def test_agent_known_window_scales_from_same_allocator(monkeypatch):
     monkeypatch.setattr(
-        budget_module,
+        model_context,
         "get_context_length_known",
         lambda endpoint, model: (16384, True),
+    )
+    monkeypatch.setattr(
+        model_context,
+        "budget_context_for_model",
+        lambda endpoint, model, fallback=0: 16384,
     )
 
     _, plan = shape_messages_for_route(
@@ -84,9 +95,14 @@ def test_agent_known_window_scales_from_same_allocator(monkeypatch):
 
 def test_explicit_budget_is_honored(monkeypatch):
     monkeypatch.setattr(
-        budget_module,
+        model_context,
         "get_context_length_known",
         lambda endpoint, model: (16384, True),
+    )
+    monkeypatch.setattr(
+        model_context,
+        "budget_context_for_model",
+        lambda endpoint, model, fallback=0: 16384,
     )
 
     _, plan = shape_messages_for_route(

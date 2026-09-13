@@ -6,14 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional
 
-from src.context_budget import (
-    DEFAULT_BUDGET,
-    DEFAULT_HARD_MAX,
-    budget_is_explicit,
-    compute_input_token_budget,
-)
-from src.context_compactor import trim_for_context
-from src.model_context import estimate_tokens, get_context_length_known
+from src.context_budget import DEFAULT_BUDGET, DEFAULT_HARD_MAX
 
 
 @dataclass(frozen=True)
@@ -70,19 +63,35 @@ def shape_messages_for_route(
     use_soft_budget: bool = False,
     configured_soft_budget: int = DEFAULT_BUDGET,
     hard_max: int = DEFAULT_HARD_MAX,
+    trim_function=None,
+    context_length_override: Optional[int] = None,
+    context_known_override: Optional[bool] = None,
 ) -> tuple[list[dict[str, Any]], RouteBudgetPlan]:
     """Trim one route request and return the exact heuristic allocation ledger."""
-    discovered, known = get_context_length_known(endpoint_url, model)
+    from src import context_budget as budget_module
+    from src import context_compactor as compactor_module
+    from src import model_context
+
+    if context_length_override is None:
+        discovered, known = model_context.get_context_length_known(endpoint_url, model)
+    else:
+        discovered = context_length_override
+        known = bool(context_known_override)
     context_length = int(discovered or fallback_context_length or 0)
     if not context_length:
         context_length = int(fallback_context_length or 128000)
     output_reserve = max(0, int(output_reserve or 0))
     schema_tokens = estimate_schema_tokens(schemas)
-    explicit = budget_is_explicit(configured_soft_budget)
+    explicit = budget_module.budget_is_explicit(configured_soft_budget)
     if use_soft_budget:
-        input_budget = compute_input_token_budget(
+        budget_context = model_context.budget_context_for_model(
+            endpoint_url,
+            model,
+            fallback=fallback_context_length,
+        )
+        input_budget = budget_module.compute_input_token_budget(
             configured_soft_budget,
-            context_length if known else 0,
+            budget_context,
             explicit,
             hard_max=max(1, int(hard_max or DEFAULT_HARD_MAX)),
         )
@@ -92,8 +101,9 @@ def shape_messages_for_route(
     # trim_for_context subtracts output_reserve itself. Reserve schema overhead
     # first so messages + provider tools + output all fit the same route budget.
     message_window = max(output_reserve + 64, input_budget - schema_tokens)
-    before_tokens = int(estimate_tokens(messages))
-    shaped = trim_for_context(
+    before_tokens = int(model_context.estimate_tokens(messages))
+    trimmer = trim_function or compactor_module.trim_for_context
+    shaped = trimmer(
         list(messages),
         message_window,
         reserve_tokens=output_reserve,
@@ -107,7 +117,7 @@ def shape_messages_for_route(
         schema_tokens=schema_tokens,
         message_window=message_window,
         tokens_before=before_tokens,
-        tokens_after=int(estimate_tokens(shaped)),
+        tokens_after=int(model_context.estimate_tokens(shaped)),
         messages_before=len(messages),
         messages_after=len(shaped),
         explicit_soft_cap=explicit,
