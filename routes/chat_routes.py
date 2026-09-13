@@ -28,8 +28,8 @@ from src.model_context import estimate_tokens
 from src.context_compactor import (
     apply_compaction_state,
     maybe_compact,
-    trim_for_context,
 )
+from src.context_engine.budget import shape_messages_for_route
 from src.chat_helpers import coerce_message_and_session
 from src.endpoint_resolver import normalize_base as _normalize_base, build_chat_url
 from src.foreground_model_routing import (
@@ -193,6 +193,7 @@ def _chat_candidate_request_factory(
         "trim_stats": {},
         "compactions": {},
         "was_compacted": {},
+        "budget_plans": {},
     }
 
     async def factory(index, candidate_url, candidate_model, candidate_headers):
@@ -209,16 +210,23 @@ def _chat_candidate_request_factory(
         )
         if not context_length:
             context_length = fallback_context_length
-        request_messages = trim_for_context(candidate_messages, context_length)
+        request_messages, budget_plan = shape_messages_for_route(
+            candidate_messages,
+            endpoint_url=candidate_url,
+            model=candidate_model,
+            fallback_context_length=context_length,
+            output_reserve=512,
+        )
         state["requests"][index] = request_messages
-        state["context_lengths"][index] = context_length
+        state["context_lengths"][index] = budget_plan.context_length
+        state["budget_plans"][index] = budget_plan.to_dict()
         state["compactions"][index] = compaction_state
         state["was_compacted"][index] = was_compacted
         state["trim_stats"][index] = {
-            "messages_before": len(messages),
-            "messages_after": len(request_messages),
-            "tokens_before": estimate_tokens(messages),
-            "tokens_after": estimate_tokens(request_messages),
+            "messages_before": budget_plan.messages_before,
+            "messages_after": budget_plan.messages_after,
+            "tokens_before": budget_plan.tokens_before,
+            "tokens_after": budget_plan.tokens_after,
         }
         return {"messages": request_messages}
 
@@ -2071,6 +2079,11 @@ def setup_chat_routes(
                                         _actual_candidate_index,
                                         {},
                                     )
+                                    _budget_plan = _chat_request_state.get("budget_plans", {}).get(
+                                        _actual_candidate_index
+                                    )
+                                    if _budget_plan:
+                                        last_metrics["context_budget_plan"] = _budget_plan
                                     if _route_trim and (
                                         _route_trim.get("messages_after") < _route_trim.get("messages_before")
                                         or _route_trim.get("tokens_after") < _route_trim.get("tokens_before")
@@ -2246,6 +2259,11 @@ def setup_chat_routes(
                             if full_response:
                                 _commit_chat_compaction(_actual_candidate_index)
                                 _metrics_to_save = dict(last_metrics or {})
+                                if ctx.context_budget_plan:
+                                    _metrics_to_save.setdefault(
+                                        "context_budget_plan",
+                                        ctx.context_budget_plan,
+                                    )
                                 if thinking_response.strip() and not _metrics_to_save.get("thinking"):
                                     _metrics_to_save["thinking"] = thinking_response.strip()
                                 _saved_id = save_assistant_response(
@@ -2516,6 +2534,11 @@ def setup_chat_routes(
                             if full_response or _has_tool_events:
                                 _response_to_save = full_response or "Done."
                                 _metrics_to_save = dict(last_metrics or {})
+                                if ctx.context_budget_plan:
+                                    _metrics_to_save.setdefault(
+                                        "context_budget_plan",
+                                        ctx.context_budget_plan,
+                                    )
                                 if thinking_response.strip() and not _metrics_to_save.get("thinking"):
                                     _metrics_to_save["thinking"] = thinking_response.strip()
                                 _saved_id = save_assistant_response(

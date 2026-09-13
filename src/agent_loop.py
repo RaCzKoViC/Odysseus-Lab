@@ -4200,36 +4200,29 @@ async def stream_agent_loop(
 
     _t2 = time.time()
     _route_context_lengths = {}
+    _route_budget_plans = {}
 
-    def _trim_route_request_messages(candidate_url, candidate_model, route_messages):
-        """Apply the candidate route's own context budget to its request."""
+    def _trim_route_request_messages(
+        candidate_url,
+        candidate_model,
+        route_messages,
+        schemas=None,
+    ):
+        """Apply the shared route allocator to one concrete agent request."""
 
         def _without_protection(items):
-            # Route markers remain internal for later prompt rebuilding;
-            # protection metadata is only needed during trimming.
-            return [{k: v for k, v in message.items() if k != "_protected"} for message in items]
+            return [
+                {k: v for k, v in message.items() if k != "_protected"}
+                for message in items
+            ]
 
         try:
-            from src.context_compactor import trim_for_context
-            from src.context_budget import (
-                compute_input_token_budget,
-                DEFAULT_BUDGET,
-                DEFAULT_HARD_MAX,
-                budget_is_explicit as _budget_is_explicit,
-            )
-            from src.model_context import budget_context_for_model
+            from src.context_budget import DEFAULT_BUDGET, DEFAULT_HARD_MAX
+            from src.context_engine.budget import shape_messages_for_route
 
-            candidate_context = budget_context_for_model(
-                candidate_url,
-                candidate_model,
-                fallback=context_length,
-            )
-            _route_context_lengths[(candidate_url, candidate_model)] = candidate_context
             soft_budget = int(get_setting("agent_input_token_budget", DEFAULT_BUDGET) or 0)
             if soft_budget <= 0:
                 return _without_protection(route_messages)
-            before_trim_tokens = estimate_tokens(route_messages)
-            reserve_tokens = min(max(max_tokens or 1024, 512), 2048)
             try:
                 hard_max = int(
                     get_setting("agent_input_token_hard_max", DEFAULT_HARD_MAX)
@@ -4239,33 +4232,36 @@ async def stream_agent_loop(
                 hard_max = DEFAULT_HARD_MAX
             if hard_max <= 0:
                 hard_max = DEFAULT_HARD_MAX
-            budget_is_explicit = _budget_is_explicit(soft_budget)
-            effective_budget = compute_input_token_budget(
-                soft_budget,
-                candidate_context,
-                budget_is_explicit,
+            reserve_tokens = min(max(max_tokens or 1024, 512), 2048)
+            trimmed_messages, budget_plan = shape_messages_for_route(
+                route_messages,
+                endpoint_url=candidate_url,
+                model=candidate_model,
+                fallback_context_length=context_length,
+                output_reserve=reserve_tokens,
+                schemas=schemas,
+                use_soft_budget=True,
+                configured_soft_budget=soft_budget,
                 hard_max=hard_max,
             )
-            trimmed_messages = trim_for_context(
-                route_messages,
-                effective_budget,
-                reserve_tokens=reserve_tokens,
-            )
-            after_trim_tokens = estimate_tokens(trimmed_messages)
-            if after_trim_tokens < before_trim_tokens:
+            key = (candidate_url, candidate_model)
+            _route_context_lengths[key] = budget_plan.context_length
+            _route_budget_plans[key] = budget_plan.to_dict()
+            if budget_plan.tokens_after < budget_plan.tokens_before:
                 logger.info(
-                    "[agent] soft-trimmed route model=%s context: %s -> %s tokens "
-                    "(budget=%s, reserve=%s)",
+                    "[agent] route context shaped model=%s: %s -> %s tokens "
+                    "(input_budget=%s, schemas=%s, reserve=%s)",
                     candidate_model,
-                    before_trim_tokens,
-                    after_trim_tokens,
-                    effective_budget,
-                    reserve_tokens,
+                    budget_plan.tokens_before,
+                    budget_plan.tokens_after,
+                    budget_plan.input_budget,
+                    budget_plan.schema_tokens,
+                    budget_plan.output_reserve,
                 )
             return _without_protection(trimmed_messages)
         except Exception as e:
             logger.warning(
-                "[agent] Soft context trim skipped for route model=%s: %s",
+                "[agent] Context allocation skipped for route model=%s: %s",
                 candidate_model,
                 e,
             )
@@ -4356,6 +4352,43 @@ async def stream_agent_loop(
             "was_compacted": was_compacted,
         }
 
+    def _schemas_for_route_state(route_state, *, force_answer=False):
+        route_mcp_schemas = route_state["mcp_schemas"]
+        route_relevant_tools = route_state["relevant_tools"]
+        if force_answer:
+            return []
+        if route_state["is_api_model"]:
+            if route_relevant_tools:
+                schema_names = set(route_relevant_tools)
+                if _needs_admin:
+                    schema_names |= _ADMIN_TOOLS
+                base_schemas = [
+                    schema for schema in FUNCTION_TOOL_SCHEMAS
+                    if schema.get("function", {}).get("name") in schema_names
+                ]
+                mcp_filtered = [
+                    schema for schema in route_mcp_schemas
+                    if schema.get("function", {}).get("name") in route_relevant_tools
+                ]
+                schemas = base_schemas + mcp_filtered
+            else:
+                base_schemas = FUNCTION_TOOL_SCHEMAS if _needs_admin else [
+                    schema for schema in FUNCTION_TOOL_SCHEMAS
+                    if schema.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
+                ]
+                schemas = base_schemas + route_mcp_schemas
+            if route_state["ody_qwen_finetune_model"]:
+                schemas = []
+            if disabled_tools:
+                schemas = [
+                    schema for schema in schemas
+                    if schema.get("function", {}).get("name") not in disabled_tools
+                    and schema.get("name") not in disabled_tools
+                ]
+            return schemas
+        wants_mcp = any(keyword in _last_user.lower() for keyword in _MCP_KEYWORDS)
+        return route_mcp_schemas if wants_mcp and route_mcp_schemas else []
+
     _initial_route_source_messages = messages
     _route_state = await _build_route_request_state(
         endpoint_url,
@@ -4374,10 +4407,12 @@ async def stream_agent_loop(
     prep_timings["prompt_build"] = time.time() - _t2
 
     _t3 = time.time()
+    _initial_route_tools = _schemas_for_route_state(_route_state)
     _initial_route_request_messages = _trim_route_request_messages(
         endpoint_url,
         model,
         messages,
+        _initial_route_tools,
     )
     _initial_route_context_length = _route_context_lengths.get(
         (endpoint_url, model),
@@ -4394,7 +4429,8 @@ async def stream_agent_loop(
         context_length,
         {k: round(v, 3) for k, v in prep_timings.items()},
     )
-    yield f"data: {json.dumps({'type': 'agent_prep', 'data': {k: round(v, 3) for k, v in prep_timings.items()}})}\n\n"
+    _initial_budget_plan = _route_budget_plans.get((endpoint_url, model), {})
+    yield f"data: {json.dumps({'type': 'agent_prep', 'data': {**{k: round(v, 3) for k, v in prep_timings.items()}, 'context_budget_plan': _initial_budget_plan}})}\n\n"
 
     full_response = ""
     total_start = time.time()
@@ -4429,6 +4465,7 @@ async def stream_agent_loop(
     _pinned_fallback_route = None
     _last_route_request_messages = _initial_route_request_messages
     _last_route_context_length = _initial_route_context_length
+    _last_route_budget_plan = _initial_budget_plan
 
     # Loop-breaker state. Small models (e.g. deepseek-v4-flash) can get
     # stuck firing the same tool call over and over with no text — burns
@@ -4474,51 +4511,8 @@ async def stream_agent_loop(
     # so the user can resume instead of the turn silently stalling.
     _exhausted_rounds = False
 
-    def _filter_route_tool_schemas(schemas):
-        # Keep candidate actions visible after taint so the model can propose
-        # the exact call that the server will seal for user approval.  Schema
-        # visibility is not authority: both the loop and dispatcher still gate
-        # execution, and only a one-use server record can cross that boundary.
-        return schemas
-
     def _tool_schemas_for_route(route_state):
-        route_mcp_schemas = route_state["mcp_schemas"]
-        route_relevant_tools = route_state["relevant_tools"]
-        if _force_answer:
-            return []
-        if route_state["is_api_model"]:
-            if route_relevant_tools:
-                schema_names = set(route_relevant_tools)
-                if _needs_admin:
-                    schema_names |= _ADMIN_TOOLS
-                base_schemas = [
-                    schema for schema in FUNCTION_TOOL_SCHEMAS
-                    if schema.get("function", {}).get("name") in schema_names
-                ]
-                mcp_filtered = [
-                    schema for schema in route_mcp_schemas
-                    if schema.get("function", {}).get("name") in route_relevant_tools
-                ]
-                schemas = base_schemas + mcp_filtered
-            else:
-                base_schemas = FUNCTION_TOOL_SCHEMAS if _needs_admin else [
-                    schema for schema in FUNCTION_TOOL_SCHEMAS
-                    if schema.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
-                ]
-                schemas = base_schemas + route_mcp_schemas
-            if route_state["ody_qwen_finetune_model"]:
-                schemas = []
-            if disabled_tools:
-                schemas = [
-                    schema for schema in schemas
-                    if schema.get("function", {}).get("name") not in disabled_tools
-                    and schema.get("name") not in disabled_tools
-                ]
-            return _filter_route_tool_schemas(schemas)
-
-        wants_mcp = any(keyword in _last_user.lower() for keyword in _MCP_KEYWORDS)
-        schemas = route_mcp_schemas if wants_mcp and route_mcp_schemas else []
-        return _filter_route_tool_schemas(schemas)
+        return _schemas_for_route_state(route_state, force_answer=_force_answer)
 
     _approved_result_injected = False
     if exact_approval is not None:
@@ -4823,7 +4817,7 @@ async def stream_agent_loop(
         _candidate_request_states = {0: _active_route_state}
 
         async def _candidate_request(index, candidate_url, candidate_model, candidate_headers):
-            nonlocal _last_route_request_messages, _last_route_context_length
+            nonlocal _last_route_request_messages, _last_route_context_length, _last_route_budget_plan
             if index == 0:
                 state = _active_route_state
             else:
@@ -4836,12 +4830,14 @@ async def stream_agent_loop(
                     candidate_headers,
                     candidate_source_messages,
                 )
+            candidate_tools = _tool_schemas_for_route(state)
             request_messages = state.get("request_messages")
             if request_messages is None:
                 request_messages = _trim_route_request_messages(
                     candidate_url,
                     candidate_model,
                     state["messages"],
+                    candidate_tools,
                 )
                 state["request_messages"] = request_messages
             _last_route_request_messages = request_messages
@@ -4849,9 +4845,13 @@ async def stream_agent_loop(
                 (candidate_url, candidate_model),
                 context_length,
             )
+            state["context_budget_plan"] = _route_budget_plans.get(
+                (candidate_url, candidate_model),
+                {},
+            )
             _last_route_context_length = state["context_length"]
+            _last_route_budget_plan = state["context_budget_plan"]
             run_security.observe_messages(request_messages)
-            candidate_tools = _tool_schemas_for_route(state)
             state["tools"] = candidate_tools
             _candidate_request_states[index] = state
             return {
@@ -5125,11 +5125,14 @@ async def stream_agent_loop(
                                     headers,
                                     messages,
                                 )
+                                answering_tools = _tool_schemas_for_route(answering_state)
                                 answering_state["request_messages"] = _trim_route_request_messages(
                                     endpoint_url,
                                     model,
                                     answering_state["messages"],
+                                    answering_tools,
                                 )
+                                answering_state["tools"] = answering_tools
                                 answering_state["context_length"] = _route_context_lengths.get(
                                     (endpoint_url, model),
                                     context_length,
@@ -6397,6 +6400,8 @@ async def stream_agent_loop(
         backend_prefill_tps=backend_prefill_tps,
     )
     metrics["requested_model"] = requested_model
+    if _last_route_budget_plan:
+        metrics["context_budget_plan"] = _last_route_budget_plan
     metrics["endpoint_id"] = actual_endpoint_id
     metrics["endpoint_label"] = actual_endpoint_label
     if isinstance(actual_endpoint_cost_tracked, bool):

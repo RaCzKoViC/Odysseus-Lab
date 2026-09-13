@@ -192,6 +192,26 @@ def build_context_manifest(
             session_id=session.id,
         )
     )
+    persisted_budget_plan = latest_assistant_metadata.get("context_budget_plan")
+    persisted_budget_plan = (
+        persisted_budget_plan if isinstance(persisted_budget_plan, dict) else {}
+    )
+    schema_tokens = int(persisted_budget_plan.get("schema_tokens") or 0)
+    if schema_tokens:
+        items.append(
+            ContextItem(
+                id="last-turn:tool-schemas",
+                category="tools",
+                label="Provider tool schemas",
+                tokens_estimated=schema_tokens,
+                trust="trusted",
+                origin="server",
+                source="route_budget",
+                owner=owner,
+                project_id=project_id,
+                session_id=session.id,
+            )
+        )
     if project is not None:
         project_text = "\n".join(
             value for value in (
@@ -245,16 +265,29 @@ def build_context_manifest(
         if not (getattr(message, "metadata", None) or {}).get("hidden")
     )
 
+    budget_payload = {
+        "configured_soft": configured,
+        "configured_soft_explicit": explicit,
+        "hard_max": hard_max,
+        "effective_soft": effective,
+        "headroom": 0.85,
+    }
+    if persisted_budget_plan:
+        budget_payload.update(
+            {
+                "route_input_budget": persisted_budget_plan.get("input_budget"),
+                "output_reserve": persisted_budget_plan.get("output_reserve"),
+                "schema_tokens": persisted_budget_plan.get("schema_tokens"),
+                "message_window": persisted_budget_plan.get("message_window"),
+                "tokens_before": persisted_budget_plan.get("tokens_before"),
+                "tokens_after": persisted_budget_plan.get("tokens_after"),
+            }
+        )
+
     return ContextManifest(
         session_id=session.id,
         profile=profile,
-        budget={
-            "configured_soft": configured,
-            "configured_soft_explicit": explicit,
-            "hard_max": hard_max,
-            "effective_soft": effective,
-            "headroom": 0.85,
-        },
+        budget=budget_payload,
         lenses={
             "session": {
                 "used_tokens": session_tokens,
@@ -269,8 +302,14 @@ def build_context_manifest(
                 "limit_tokens": last_limit,
                 "percent": last_percent,
                 "context_trimmed": bool(latest_assistant_metadata.get("context_trimmed")),
-                "tokens_before_trim": latest_assistant_metadata.get("context_tokens_before_trim"),
-                "tokens_after_trim": latest_assistant_metadata.get("context_tokens_after_trim"),
+                "tokens_before_trim": (
+                    latest_assistant_metadata.get("context_tokens_before_trim")
+                    or persisted_budget_plan.get("tokens_before")
+                ),
+                "tokens_after_trim": (
+                    latest_assistant_metadata.get("context_tokens_after_trim")
+                    or persisted_budget_plan.get("tokens_after")
+                ),
                 "usage_source": latest_assistant_metadata.get("usage_source") or "estimated",
             },
         },

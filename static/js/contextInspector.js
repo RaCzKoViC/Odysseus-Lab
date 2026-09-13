@@ -143,7 +143,14 @@ function buildInspector(payload, callbacks) {
     const budgetText = budget.configured_soft_explicit
       ? `Explicit budget ${formatTokens(budget.effective_soft, false)}`
       : `Auto budget ${formatTokens(budget.effective_soft, false)} · ${profile.tier || 'unknown'} profile`;
-    summary.append(usage, bar, node('div', 'context-inspector-budget', budgetText));
+    const routeDetails = budget.route_input_budget
+      ? ` · Route ${formatTokens(budget.route_input_budget, false)} · Schemas ${formatTokens(budget.schema_tokens || 0, true)} · Reserve ${formatTokens(budget.output_reserve || 0, false)}`
+      : '';
+    summary.append(
+      usage,
+      bar,
+      node('div', 'context-inspector-budget', budgetText + routeDetails),
+    );
     categories.replaceChildren();
     CATEGORY_ORDER.forEach((id) => {
       const category = payload.categories?.find((item) => item.id === id);

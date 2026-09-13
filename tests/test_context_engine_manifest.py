@@ -39,6 +39,14 @@ class Session:
                     "memories_used": [{"text": "Use TypeScript"}],
                     "rag_sources": [{"filename": "README.md", "text": "Architecture"}],
                     "tool_events": [{"name": "read_file"}],
+                    "context_budget_plan": {
+                        "input_budget": 7000,
+                        "output_reserve": 1024,
+                        "schema_tokens": 320,
+                        "message_window": 6680,
+                        "tokens_before": 1400,
+                        "tokens_after": 1024,
+                    },
                 },
             ),
         ]
@@ -80,6 +88,11 @@ def test_context_manifest_has_stable_categories_and_lenses(monkeypatch):
     assert payload["budget"]["effective_soft"] == int(8192 * 0.85)
     assert payload["flags"]["project_memory_mode"] == "project_only"
     assert payload["actions"]["can_compact"] is True
+    assert payload["budget"]["schema_tokens"] == 320
+    tools = next(
+        category for category in payload["categories"] if category["id"] == "tools"
+    )
+    assert any(item["label"] == "Provider tool schemas" for item in tools["items"])
 
 
 def test_context_manifest_records_provenance_without_payload_text(monkeypatch):

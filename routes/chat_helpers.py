@@ -14,7 +14,8 @@ from core.database import SessionLocal
 from core.database import Session as DBSession, ModelEndpoint
 from src.llm_core import normalize_model_id
 from src.endpoint_resolver import normalize_base
-from src.context_compactor import maybe_compact, trim_for_context
+from src.context_compactor import maybe_compact
+from src.context_engine.budget import shape_messages_for_route
 from src.model_context import estimate_tokens, get_context_length
 from src.auth_helpers import effective_user
 from src.prompt_security import untrusted_context_message
@@ -144,6 +145,7 @@ class ChatContext:
     context_messages_after_trim: int = 0
     context_tokens_before_trim: int = 0
     context_tokens_after_trim: int = 0
+    context_budget_plan: dict = field(default_factory=dict)
     # Documents auto-created server-side during preprocess (e.g. when an
     # attached fillable PDF gets rendered into a markdown editor doc).
     # The chat route emits a doc_update SSE event for each before streaming
@@ -796,8 +798,17 @@ async def build_chat_context(
         )
     _before_trim_messages = len(messages)
     _before_trim_tokens = estimate_tokens(messages)
+    context_budget_plan = {}
     if not defer_context_shaping:
-        messages = trim_for_context(messages, context_length)
+        messages, route_budget_plan = shape_messages_for_route(
+            messages,
+            endpoint_url=sess.endpoint_url,
+            model=sess.model,
+            fallback_context_length=context_length,
+            output_reserve=512,
+        )
+        context_length = route_budget_plan.context_length
+        context_budget_plan = route_budget_plan.to_dict()
     _after_trim_messages = len(messages)
     _after_trim_tokens = estimate_tokens(messages)
     _context_trimmed = _after_trim_messages < _before_trim_messages or _after_trim_tokens < _before_trim_tokens
@@ -819,6 +830,7 @@ async def build_chat_context(
         context_messages_after_trim=_after_trim_messages,
         context_tokens_before_trim=_before_trim_tokens,
         context_tokens_after_trim=_after_trim_tokens,
+        context_budget_plan=context_budget_plan,
         auto_opened_docs=auto_opened_docs,
         uploaded_files=uploaded_files,
         route_messages=route_messages,
