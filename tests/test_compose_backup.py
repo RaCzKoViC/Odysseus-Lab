@@ -87,6 +87,7 @@ def test_compose_snapshot_restarts_services_after_failure(monkeypatch, tmp_path)
     monkeypatch.setattr(backup.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(backup, "_data_dir", lambda root: data)
     monkeypatch.setattr(backup, "_chroma_volume", lambda root: "project_chromadb-data")
+    monkeypatch.setattr(backup, "_prepare_backup_helper", lambda root: None)
     monkeypatch.setattr(backup, "_stop_running", lambda root, services: ["odysseus", "chromadb"])
     monkeypatch.setattr(backup, "_restart", lambda root, services: restarted.extend(services))
     monkeypatch.setattr(
@@ -99,3 +100,24 @@ def test_compose_snapshot_restarts_services_after_failure(monkeypatch, tmp_path)
         backup.snapshot(tmp_path, tmp_path / "out.tar.gz")
 
     assert restarted == ["odysseus", "chromadb"]
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "restore"])
+def test_unavailable_backup_helper_does_not_stop_services(monkeypatch, tmp_path, operation):
+    backup = load_script("odysseus-compose-backup")
+    data = tmp_path / "data"
+    data.mkdir()
+    stopped = []
+    monkeypatch.setattr(backup.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(backup, "_data_dir", lambda root: data)
+    monkeypatch.setattr(backup, "_chroma_volume", lambda root: "project_chromadb-data")
+    monkeypatch.setattr(backup, "_stop_running", lambda root, services: stopped.extend(services))
+    monkeypatch.setattr(
+        backup, "_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(backup.BackupError("helper unavailable")),
+    )
+
+    with pytest.raises(backup.BackupError, match="helper unavailable"):
+        getattr(backup, operation)(tmp_path, tmp_path / "bundle.tar.gz")
+
+    assert stopped == []

@@ -83,6 +83,9 @@ The command briefly stops running `odysseus` and `chromadb` services, creates a
 single bundle containing `app-data.tar.gz`, `chromadb.tar.gz`, and a checksummed
 manifest, then restarts only the services that were running. A Compose
 `chromadb` container must already exist so the actual volume can be identified.
+The archive operations use a separate, digest-pinned Python helper image because
+the ChromaDB image has no Python interpreter. The helper is downloaded and
+checked before services stop; its volume access runs with networking disabled.
 
 Backups contain the application encryption key, sessions, provider tokens,
 documents, and vector data. Store them as secrets. The `backups/` path is
