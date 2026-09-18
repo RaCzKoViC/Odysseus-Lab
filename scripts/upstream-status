@@ -3,6 +3,12 @@
 
 This command never fetches, merges, rebases, commits, or pushes. Run
 ``git fetch upstream main dev`` explicitly before using it for a fresh report.
+
+Drift is measured from the tracked baseline in ``UPSTREAM_BASE`` (the upstream
+commit the Lab tree was imported from or last synchronized to), because the Lab
+history started from a squash import and shares no ancestor with upstream. The
+``HEAD...ref`` ahead/behind counts are only reported when a common ancestor
+actually exists.
 """
 
 from __future__ import annotations
@@ -18,34 +24,65 @@ from urllib.parse import urlsplit, urlunsplit
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
 
+# Upstream files where Lab changes are most likely to conflict during a
+# synchronization (see website/upstream.md, "Review an update").
+HOTSPOTS = (
+    "app.py",
+    "static/app.js",
+    "src/llm_core.py",
+    "core/database.py",
+)
 
-def _git(root: Path, *args: str, check: bool = True) -> str:
-    result = subprocess.run(
+
+def _run(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         ["git", "-C", str(root), *args],
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def _git(root: Path, *args: str, check: bool = True) -> str:
+    result = _run(root, *args)
     if check and result.returncode:
         raise RuntimeError((result.stderr or result.stdout).strip() or "git command failed")
     return result.stdout.strip()
 
 
-def _ref_status(root: Path, branch: str) -> dict[str, Any]:
+def _ref_status(root: Path, branch: str, baseline_commit: str) -> dict[str, Any]:
     ref = f"refs/remotes/upstream/{branch}"
     if not _git(root, "rev-parse", "--verify", "--quiet", ref, check=False):
         return {"branch": branch, "available": False}
 
     sha = _git(root, "rev-parse", ref)
-    counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...{ref}")
-    ahead, behind = (int(value) for value in counts.split())
-    return {
-        "branch": branch,
-        "available": True,
-        "commit": sha,
-        "lab_ahead": ahead,
-        "lab_behind": behind,
-    }
+    status: dict[str, Any] = {"branch": branch, "available": True, "commit": sha}
+
+    # Ahead/behind relative to HEAD is only meaningful with shared history.
+    shared_history = bool(_git(root, "merge-base", "HEAD", ref, check=False))
+    status["shared_history"] = shared_history
+    if shared_history:
+        counts = _git(root, "rev-list", "--left-right", "--count", f"HEAD...{ref}")
+        ahead, behind = (int(value) for value in counts.split())
+        status["lab_ahead"] = ahead
+        status["lab_behind"] = behind
+    else:
+        status["lab_ahead"] = None
+        status["lab_behind"] = None
+
+    # Drift since the tracked baseline: what upstream added that Lab has not
+    # reviewed yet, and which conflict hotspots those commits touch.
+    reachable = _run(root, "merge-base", "--is-ancestor", baseline_commit, ref).returncode == 0
+    status["baseline_reachable"] = reachable
+    if reachable:
+        span = f"{baseline_commit}..{ref}"
+        status["since_baseline"] = int(_git(root, "rev-list", "--count", span))
+        changed = _git(root, "diff", "--name-only", span, "--", *HOTSPOTS)
+        status["hotspots_changed"] = sorted(line for line in changed.splitlines() if line.strip())
+    else:
+        status["since_baseline"] = None
+        status["hotspots_changed"] = []
+    return status
 
 
 def _safe_remote_url(value: str) -> str:
@@ -65,6 +102,7 @@ def _safe_remote_url(value: str) -> str:
 def collect(root: Path) -> dict[str, Any]:
     baseline_path = root / "UPSTREAM_BASE"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    baseline_commit = str(baseline.get("commit", ""))
     raw_remote_url = _git(root, "remote", "get-url", "upstream", check=False)
     configured = bool(raw_remote_url)
     remote_url = _safe_remote_url(raw_remote_url) if configured else ""
@@ -74,12 +112,13 @@ def collect(root: Path) -> dict[str, Any]:
         "repository": str(root.resolve()),
         "head": _git(root, "rev-parse", "HEAD"),
         "baseline": baseline,
+        "hotspots": list(HOTSPOTS),
         "upstream": {
             "configured": configured,
             "url": remote_url or None,
             "refs": [
-                _ref_status(root, "main") if configured else {"branch": "main", "available": False},
-                _ref_status(root, "dev") if configured else {"branch": "dev", "available": False},
+                _ref_status(root, "main", baseline_commit) if configured else {"branch": "main", "available": False},
+                _ref_status(root, "dev", baseline_commit) if configured else {"branch": "dev", "available": False},
             ],
         },
         "next_step": (
@@ -88,6 +127,25 @@ def collect(root: Path) -> dict[str, Any]:
             else "Run: git remote add upstream https://github.com/odysseus-dev/odysseus.git"
         ),
     }
+
+
+def _describe_ref(ref: dict[str, Any]) -> str:
+    if not ref["available"]:
+        return f"  {ref['branch']}: not fetched"
+    parts: list[str] = []
+    if ref["baseline_reachable"]:
+        parts.append(f"upstream +{ref['since_baseline']} since baseline")
+        hotspots = ref["hotspots_changed"]
+        parts.append(
+            "hotspots changed: " + (", ".join(hotspots) if hotspots else "none")
+        )
+    else:
+        parts.append("baseline not reachable from this ref")
+    if ref["shared_history"]:
+        parts.append(f"Lab ahead {ref['lab_ahead']}, behind {ref['lab_behind']}")
+    else:
+        parts.append("no shared history with Lab HEAD")
+    return f"  {ref['branch']}: {ref['commit']} ({'; '.join(parts)})"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -115,13 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"Upstream remote: {report['upstream']['url']}")
             for ref in report["upstream"]["refs"]:
-                if not ref["available"]:
-                    print(f"  {ref['branch']}: not fetched")
-                    continue
-                print(
-                    f"  {ref['branch']}: {ref['commit']} "
-                    f"(Lab ahead {ref['lab_ahead']}, behind {ref['lab_behind']})"
-                )
+                print(_describe_ref(ref))
         print(report["next_step"])
     return 0 if report["ok"] else 2
 
