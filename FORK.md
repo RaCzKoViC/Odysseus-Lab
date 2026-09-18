@@ -10,6 +10,7 @@ operated by the upstream maintainers.
 - Imported branch: `dev`
 - Imported commit: `9d5c0319149bfb69ce22a35f37cf17debaa5f14b`
 - Imported Odysseus version: `1.0.3`
+- Last synchronized upstream commit: `3b6c169162330cd35c4ce6d14949ef15fd3208a2` (`dev`, 2026-09-19)
 - First Odysseus-Lab release line: `0.1.x`
 
 The exact tracked baseline is also stored in [`UPSTREAM_BASE`](UPSTREAM_BASE).
