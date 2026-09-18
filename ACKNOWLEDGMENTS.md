@@ -2,7 +2,8 @@
 
 Odysseus-Lab is based on
 [Odysseus](https://github.com/odysseus-dev/odysseus), imported from commit
-`9d5c0319149bfb69ce22a35f37cf17debaa5f14b`. The upstream authors and
+`9d5c0319149bfb69ce22a35f37cf17debaa5f14b` and last synchronized with upstream commit
+`3b6c169162330cd35c4ce6d14949ef15fd3208a2`. The upstream authors and
 contributors retain copyright in their work. Odysseus-Lab modifications are
 distributed under the same AGPL-3.0-or-later license; see [`FORK.md`](FORK.md).
 
