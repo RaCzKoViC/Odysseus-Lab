@@ -65,6 +65,7 @@ const PRECACHE = [
   '/static/js/chatStream.js',
   '/static/js/chat.js',
   '/static/js/scrollJump.js',
+  '/static/js/artifacts.js',
   '/static/js/cookbook.js',
   '/static/js/search-chat.js',
   '/static/js/compare/index.js',
