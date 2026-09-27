@@ -19,7 +19,7 @@ bcrypt==5.0.0
     # via -r requirements.txt
 beautifulsoup4==4.15.0
     # via -r requirements.txt
-caldav==3.3.0
+caldav==3.3.1
     # via -r requirements.txt
 certifi==2026.7.22
     # via
@@ -52,19 +52,19 @@ dnspython==2.8.0
     # via caldav
 fastapi==0.141.1
     # via -r requirements.txt
-fastembed==0.8.0
+fastembed==0.8.1
     # via -r requirements.txt
-filelock==3.32.6
+filelock==4.0.3
     # via huggingface-hub
 flatbuffers==25.12.19
     # via onnxruntime
-fsspec==2026.7.0
+fsspec==2026.9.0
     # via huggingface-hub
 googleapis-common-protos==1.75.3
     # via opentelemetry-exporter-otlp-proto-grpc
-greenlet==3.5.5
+greenlet==3.5.6
     # via sqlalchemy
-grpcio==1.83.1
+grpcio==1.84.0
     # via opentelemetry-exporter-otlp-proto-grpc
 h11==0.16.0
     # via
@@ -78,7 +78,7 @@ httpcore==1.0.9
     # via
     #   -r requirements.txt
     #   httpx
-httpcore2==2.12.0
+httpcore2==2.13.1
     # via httpx2
 httpx==0.28.1
     # via
@@ -88,9 +88,9 @@ httpx==0.28.1
     #   mcp
 httpx-sse==0.4.3
     # via mcp
-httpx2==2.12.0
+httpx2==2.13.1
     # via -r requirements.txt
-huggingface-hub==1.31.0
+huggingface-hub==2.0.0
     # via
     #   fastembed
     #   tokenizers
@@ -103,7 +103,7 @@ icalendar==7.3.0
     #   x-wr-timezone
 icalendar-searcher==1.0.6
     # via caldav
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx
@@ -111,7 +111,7 @@ idna==3.19
     #   requests
 iniconfig==2.3.0
     # via pytest
-jh2==5.0.14
+jh2==5.0.15
     # via urllib3-future
 jsonschema==4.26.0
     # via
@@ -131,7 +131,7 @@ mmh3==5.3.0
     # via fastembed
 nh3==0.3.7
     # via -r requirements.txt
-niquests==3.21.1
+niquests==3.21.2
     # via caldav
 numpy==2.4.6
     # via
@@ -176,7 +176,7 @@ pillow==12.3.0
     #   qrcode
 pluggy==1.6.0
     # via pytest
-protobuf==7.36.1
+protobuf==7.36.2
     # via
     #   googleapis-common-protos
     #   onnxruntime
@@ -196,7 +196,7 @@ pydantic==2.13.5
     #   fastapi
     #   mcp
     #   pydantic-settings
-pydantic-core==2.46.5
+pydantic-core==2.49.0
     # via pydantic
 pydantic-settings==2.15.0
     # via
@@ -205,11 +205,11 @@ pydantic-settings==2.15.0
     #   mcp
 pygments==2.21.0
     # via pytest
-pyjwt==2.14.0
+pyjwt==2.15.0
     # via mcp
 pyotp==2.10.0
     # via -r requirements.txt
-pypdf==6.18.1
+pypdf==6.19.0
     # via -r requirements.txt
 pytest==9.1.1
     # via
@@ -259,13 +259,13 @@ rpds-py==2026.6.3
     #   referencing
 six==1.17.0
     # via python-dateutil
-soupsieve==2.9.2
+soupsieve==2.10
     # via beautifulsoup4
-sqlalchemy==2.0.52
+sqlalchemy==2.0.54
     # via -r requirements.txt
 sse-starlette==3.4.11
     # via mcp
-starlette==1.6.0
+starlette==1.7.0
     # via
     #   fastapi
     #   mcp
@@ -315,11 +315,11 @@ tzdata==2026.4
     #   icalendar
     #   recurring-ical-events
     #   x-wr-timezone
-urllib3==2.7.0
+urllib3==2.8.0
     # via requests
-urllib3-future==2.24.908
+urllib3-future==2.25.900
     # via niquests
-uvicorn==0.52.4
+uvicorn==0.53.0
     # via
     #   -r requirements.txt
     #   mcp
