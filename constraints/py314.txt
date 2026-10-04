@@ -90,7 +90,7 @@ httpx-sse==0.4.3
     # via mcp
 httpx2==2.13.1
     # via -r requirements.txt
-huggingface-hub==2.0.0
+huggingface-hub==1.31.0
     # via
     #   fastembed
     #   tokenizers
@@ -196,7 +196,7 @@ pydantic==2.13.5
     #   fastapi
     #   mcp
     #   pydantic-settings
-pydantic-core==2.49.0
+pydantic-core==2.46.5
     # via pydantic
 pydantic-settings==2.15.0
     # via
