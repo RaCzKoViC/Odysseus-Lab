@@ -233,3 +233,12 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose down --volumes --remove-orphans
+
+  profile-notification:
+    name: Notify profile after checks
+    needs: [focused-test-guidance, python-syntax, node-syntax, compose-config, python-tests, windows-foundation, docker-smoke]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    permissions: {}
+    uses: ./.github/workflows/notify-profile.yml
+    secrets:
+      PROFILE_DISPATCH_TOKEN: ${{ secrets.PROFILE_DISPATCH_TOKEN }}
