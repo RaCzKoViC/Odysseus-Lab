@@ -15,11 +15,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  pages-check:
+    name: Check GitHub Pages configuration
+    # Odysseus-Lab intentionally does not publish Pages in 0.1. The repository
+    # is public now, but Pages is not enabled in Settings -> Pages, so
+    # actions/configure-pages fails with "Not Found". Detect that here and skip
+    # the build/deploy jobs (green, not red) until Pages is switched on with
+    # Source = "GitHub Actions".
+    if: github.event.repository.private == false
+    runs-on: ubuntu-latest
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Detect whether Pages is enabled for this repository
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if build_type="$(gh api "repos/${REPO}/pages" --jq '.build_type' 2>/dev/null)"; then
+            if [ "$build_type" = "workflow" ]; then
+              echo "enabled=true" >> "$GITHUB_OUTPUT"
+              echo "GitHub Pages is enabled (build_type=workflow); deploying."
+            else
+              echo "enabled=false" >> "$GITHUB_OUTPUT"
+              echo "::notice title=Pages deploy skipped::GitHub Pages source is '${build_type}', not 'GitHub Actions'. Set Settings -> Pages -> Source = GitHub Actions to deploy website/."
+            fi
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Pages deploy skipped::GitHub Pages is not enabled for ${REPO}. Enable it in Settings -> Pages (Source = GitHub Actions) to deploy website/."
+          fi
+
   build:
     name: Package static site
-    # Odysseus-Lab is private and intentionally does not publish Pages in 0.1.
-    # Making the repository public re-enables this inherited upstream workflow.
-    if: github.event.repository.private == false
+    needs: pages-check
+    if: needs.pages-check.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
