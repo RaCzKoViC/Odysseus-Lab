@@ -41,3 +41,12 @@ jobs:
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4.38.0
         with:
           category: "/language:${{ matrix.language }}"
+
+  profile-notification:
+    name: Notify profile after checks
+    needs: [analyze]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    permissions: {}
+    uses: ./.github/workflows/notify-profile.yml
+    secrets:
+      PROFILE_DISPATCH_TOKEN: ${{ secrets.PROFILE_DISPATCH_TOKEN }}
