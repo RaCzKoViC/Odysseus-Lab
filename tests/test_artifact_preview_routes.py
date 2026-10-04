@@ -54,6 +54,11 @@ def test_the_preview_path_carries_its_own_policy(client):
     assert "connect-src 'none'" in csp
     assert "form-action 'none'" in csp
     assert "frame-ancestors 'self'" in csp
+    # Opaque origin even when opened top-level ("Open in tab"): the sandbox
+    # comes with the response, and it never grants allow-same-origin.
+    sandbox = next(d.strip() for d in csp.split(";") if d.strip().startswith("sandbox"))
+    assert "allow-scripts" in sandbox
+    assert "allow-same-origin" not in sandbox
     assert served.headers["x-frame-options"] == "SAMEORIGIN"
     assert served.headers["cache-control"] == "no-store"
 
@@ -110,34 +115,41 @@ def test_the_store_expires_and_stays_bounded():
 @pytest.fixture
 def library_client(tmp_path, monkeypatch):
     """A client with its own database file, so the library tests never see
-    the developer's own saved artifacts."""
-    import importlib
-    import os
+    the developer's own saved artifacts.
+
+    Isolation goes through monkeypatch rather than importlib.reload: reloading
+    core.database (and the auth/owner helpers) left the whole process pointing
+    at this test's temporary engine and at fresh model classes, so tests that
+    ran later (calendar, manage_tasks owner scope, session image cleanup)
+    failed against the wrong database. monkeypatch undoes everything here.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import core.database as database
 
     # The library is owner-scoped through the same helper the rest of the
     # Lab uses, which 401s when it cannot name an owner. Local no-login mode
-    # is what gives it one, and is how the app actually runs here.
+    # is what gives it one, and is how the app actually runs here. The
+    # AUTH_ENABLED flag is read at call time, so no module reload is needed.
     monkeypatch.setenv("AUTH_ENABLED", "false")
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'lib.db'}")
-    import core.database as database
 
-    importlib.reload(database)
-    database.init_db()
-
-    import src.owner_identity as owner_identity
-    import src.auth_helpers as auth_helpers
-    import src.project_scope as project_scope
-    import routes.artifact.artifact_routes as artifact_routes
-
-    importlib.reload(owner_identity)
-    importlib.reload(auth_helpers)
-    importlib.reload(project_scope)
-    importlib.reload(artifact_routes)
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'lib.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    database.SavedArtifact.__table__.create(bind=engine)
+    monkeypatch.setattr(
+        database,
+        "SessionLocal",
+        sessionmaker(autocommit=False, autoflush=False, bind=engine),
+    )
 
     app = FastAPI()
-    app.include_router(artifact_routes.setup_artifact_routes())
+    app.include_router(setup_artifact_routes())
     with TestClient(app) as client:
         yield client
+    engine.dispose()
 
 
 def test_an_artifact_is_kept_only_when_it_is_saved(library_client):

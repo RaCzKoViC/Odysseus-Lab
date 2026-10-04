@@ -137,7 +137,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             pass
         elif is_artifact_preview:
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            # The CSP sandbox directive makes the opaque origin a property of
+            # the response itself, not only of the <iframe sandbox> that
+            # embeds it. Without it, "Open in tab" (or any top-level visit)
+            # would run the model's inline script in the app's own origin,
+            # with access to its storage and to other same-origin windows.
             response.headers["Content-Security-Policy"] = (
+                "sandbox allow-scripts allow-forms allow-modals allow-popups; "
                 "default-src 'none'; "
                 "script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
                 "style-src 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
