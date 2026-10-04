@@ -955,7 +955,7 @@ export function hideArtifacts(keys) {
 /** A one-line way back for an artifact that was deleted. */
 function offerRestore(pre, key) {
   if (pre.previousElementSibling?.classList.contains('artifact-restore')) return;
-  const link = el('button', 'artifact-restore', 'Przywr\u00f3\u0107 jako artefakt');
+  const link = el('button', 'artifact-restore', 'Restore as artifact');
   link.type = 'button';
   link.title = 'Show this block as an artifact card again';
   link.addEventListener('click', () => {
@@ -1113,10 +1113,10 @@ export async function openArtifactList() {
   titleWrap.appendChild(subtitle);
 
   const actions = el('div', 'artifact-actions');
-  const selectBtn = el('button', 'artifact-action', 'Wybierz');
+  const selectBtn = el('button', 'artifact-action', 'Select');
   selectBtn.type = 'button';
   selectBtn.title = 'Select artifacts to delete';
-  const deleteBtn = el('button', 'artifact-action artifact-danger', 'Usu\u0144');
+  const deleteBtn = el('button', 'artifact-action artifact-danger', 'Delete');
   deleteBtn.type = 'button';
   deleteBtn.hidden = true;
   const close = el('button', 'artifact-close', '\u00d7');
@@ -1137,8 +1137,8 @@ export async function openArtifactList() {
 
   function renderDeleteLabel() {
     deleteBtn.textContent = selection.size
-      ? `Usu\u0144 (${selection.size})`
-      : 'Usu\u0144';
+      ? `Delete (${selection.size})`
+      : 'Delete';
     deleteBtn.disabled = selection.size === 0;
   }
 
@@ -1194,7 +1194,7 @@ export async function openArtifactList() {
     selecting = !selecting;
     selection.clear();
     selectBtn.classList.toggle('is-active', selecting);
-    selectBtn.textContent = selecting ? 'Anuluj' : 'Wybierz';
+    selectBtn.textContent = selecting ? 'Cancel' : 'Select';
     deleteBtn.hidden = !selecting;
     renderDeleteLabel();
     draw();
@@ -1216,7 +1216,7 @@ export async function openArtifactList() {
       selection.clear();
       selecting = false;
       selectBtn.classList.remove('is-active');
-      selectBtn.textContent = 'Wybierz';
+      selectBtn.textContent = 'Select';
       deleteBtn.hidden = true;
       await draw();
       await refreshArtifactCount();
@@ -1253,7 +1253,7 @@ export function openEditDialog(artifact, parentPanel) {
   wrap.appendChild(input);
 
   const row = el('div', 'artifact-edit-actions');
-  const cancel = el('button', 'artifact-action', 'Anuluj');
+  const cancel = el('button', 'artifact-action', 'Cancel');
   cancel.type = 'button';
   cancel.addEventListener('click', () => wrap.remove());
   const send = el('button', 'artifact-action artifact-primary', 'Wdr\u00f3\u017c zmiany');

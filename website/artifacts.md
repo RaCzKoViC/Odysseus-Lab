@@ -75,12 +75,12 @@ outlined and marked. The badge counts saved artifacts, not the ones on screen.
   and the panel shows it. No tool calling, so it works with every model. A
   revision does not overwrite the saved entry by itself - saving stays a
   decision.
-- **Wybierz** turns on selection, **Usuń (n)** deletes what is ticked.
+- **Select** turns on selection, **Delete (n)** deletes what is ticked.
 
 Deleting removes the artifact from the library *and* takes its card out of the
 conversation, because that is what deleting is for. The transcript itself is
 untouched: the code block the card was made from comes back into view, exactly
-as the model wrote it, with a quiet **Przywróć jako artefakt** link in case the
+as the model wrote it, with a quiet **Restore as artifact** link in case the
 deletion was a mistake. Deletions are remembered in `localStorage`, so they
 survive a reload; saving the artifact again brings its card back.
 
