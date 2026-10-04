@@ -183,9 +183,11 @@ Trivy remains advisory. CodeQL is skipped while this private repository lacks
 GitHub Advanced Security. If GHAS is enabled later, add the repository variable
 `ODYSSEUS_ENABLE_CODEQL=true`; do not also enable CodeQL default setup.
 
-GitHub Pages is intentionally skipped while the repository is private. GHCR
-publishes a private, lower-case `ghcr.io/raczkovic/odysseus-lab` image from
-`main`.
+GitHub Pages publishes `website/` to <https://raczkovic.github.io/Odysseus-Lab/>
+through the `Deploy GitHub Pages` workflow (Settings → Pages → Source = GitHub
+Actions). If Pages is ever switched off, the workflow detects it and skips the
+build and deploy instead of failing. GHCR publishes a lower-case
+`ghcr.io/raczkovic/odysseus-lab` image from `main`.
 
 ## Release checklist
 
