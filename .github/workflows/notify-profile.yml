@@ -10,8 +10,12 @@ on:
         required: false
   workflow_dispatch:
 permissions: {}
+# This workflow is also called (workflow_call) from every CI workflow on the
+# same push. In a called workflow github.workflow is the caller's name, so it
+# must be part of the group: otherwise all callers share one group, GitHub
+# keeps a single pending run and the others end up "cancelled" (red X on main).
 concurrency:
-  group: notify-profile-${{ github.event_name }}-${{ github.event.workflow_run.id || github.ref }}
+  group: notify-profile-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.workflow_run.id || github.ref }}
   cancel-in-progress: false
 jobs:
   notify:
