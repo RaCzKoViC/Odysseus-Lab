@@ -51,3 +51,12 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
+
+  profile-notification:
+    name: Notify profile after checks
+    needs: [build, deploy]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    permissions: {}
+    uses: ./.github/workflows/notify-profile.yml
+    secrets:
+      PROFILE_DISPATCH_TOKEN: ${{ secrets.PROFILE_DISPATCH_TOKEN }}

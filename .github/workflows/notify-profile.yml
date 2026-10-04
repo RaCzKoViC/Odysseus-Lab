@@ -4,10 +4,10 @@ on:
     branches: [main]
   release:
     types: [published, edited, deleted]
-  workflow_run:
-    workflows: ['**', '!Notify profile']
-    types: [in_progress, completed]
-    branches: [main]
+  workflow_call:
+    secrets:
+      PROFILE_DISPATCH_TOKEN:
+        required: false
   workflow_dispatch:
 permissions: {}
 concurrency:
@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   notify:
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.name != 'Notify profile' && github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -33,6 +34,7 @@ jobs:
           payload = {'event_type':'project_changed','client_payload':{
               'repository':os.environ['GITHUB_REPOSITORY'],
               'event':os.environ['GITHUB_EVENT_NAME'],
+              'run_id':int(os.environ['GITHUB_RUN_ID']),
               'sha':event.get('workflow_run',{}).get('head_sha',os.environ['GITHUB_SHA'])}}
           request = urllib.request.Request(
               'https://api.github.com/repos/RaCzKoViC/RaCzKoViC/dispatches',

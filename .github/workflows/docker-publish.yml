@@ -143,3 +143,12 @@ jobs:
         env:
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
+
+  profile-notification:
+    name: Notify profile after checks
+    needs: [build, merge]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    permissions: {}
+    uses: ./.github/workflows/notify-profile.yml
+    secrets:
+      PROFILE_DISPATCH_TOKEN: ${{ secrets.PROFILE_DISPATCH_TOKEN }}
