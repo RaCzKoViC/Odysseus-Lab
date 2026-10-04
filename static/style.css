@@ -41942,3 +41942,293 @@ body.theme-liquid-glass .context-inspector-action,
 body.theme-liquid-glass .context-inspector-category {
   border-color: var(--lg-edge);
 }
+
+/* ── Artifacts (Lab) ───────────────────────────────────────────────────────
+   A deliverable the model produced, shown beside the chat instead of buried
+   in the transcript. The card stands in for the code block inside the
+   message; the panel holds the thing itself. Layout is a side panel on a
+   wide screen and a sheet on a narrow one, so the chat stays usable while an
+   artifact is open. */
+
+.artifact-card {
+  display: inline-flex;
+  /* The app gives every bare <button> height:32px (style.css, the base form
+     rules). A card is a button that holds a thumbnail, so it says otherwise. */
+  height: auto;
+  align-items: center;
+  gap: 8px;
+  /* A card sits inside a reply, so it takes the room a line of text takes,
+     not the room a panel takes: it stops at its content instead of spanning
+     the message, and several of them sit side by side. */
+  max-width: 100%;
+  margin: 6px 6px 6px 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hl-bg);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.artifact-card:hover { border-color: var(--fg); transform: translateY(-1px); }
+.artifact-card.is-open { border-color: var(--fg); box-shadow: 0 0 0 1px var(--fg) inset; }
+.artifact-card-icon { font-size: 20px; line-height: 1; }
+.artifact-card-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.artifact-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artifact-card-meta { font-size: 11px; line-height: 1.2; opacity: .65; }
+.artifact-card-open {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  opacity: .85;
+}
+
+.artifact-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(46vw, 760px);
+  height: 100vh;
+  display: none;
+  flex-direction: column;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  z-index: 60;
+}
+body.artifact-open .artifact-panel { display: flex; }
+
+.artifact-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.artifact-head-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.artifact-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.artifact-meta { font-size: 12px; opacity: .65; }
+
+.artifact-tabs { display: flex; gap: 4px; }
+.artifact-tab,
+.artifact-action,
+.artifact-version,
+.artifact-close {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.artifact-tab.is-active,
+.artifact-version.is-active { background: var(--hl-bg); border-color: var(--fg); }
+.artifact-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.artifact-versions { display: flex; gap: 4px; }
+.artifact-close { font-size: 18px; line-height: 1; padding: 2px 9px; }
+
+.artifact-body { flex: 1; min-height: 0; display: flex; }
+.artifact-preview { flex: 1; min-height: 0; overflow: auto; background: #fff; }
+.artifact-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+.artifact-plain,
+.artifact-code {
+  flex: 1;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--hl-bg);
+}
+.artifact-note { padding: 14px; color: var(--fg); opacity: .8; }
+
+/* The chat makes room rather than sliding under the panel, so the reply that
+   produced the artifact stays readable next to it. */
+@media (min-width: 1100px) {
+  body.artifact-open .chat-container { margin-right: min(46vw, 760px); }
+}
+@media (max-width: 1099px) {
+  .artifact-panel { width: 100vw; border-left: 0; }
+}
+
+body.theme-liquid-glass .artifact-panel,
+body.theme-liquid-glass .artifact-card {
+  border-color: var(--lg-edge);
+}
+
+.artifact-note { position: relative; z-index: 1; }
+.artifact-note p { margin: 0 0 10px; }
+.artifact-note-link {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.artifact-preview:has(.artifact-note) { background: var(--panel); }
+.artifact-note { padding: 16px; color: var(--fg); }
+
+/* Artifact card thumbnails: a scaled-down still of the artifact itself. */
+.artifact-card-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+}
+.artifact-thumb-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 0;
+  /* Rendered at phone width and stamped down: 46 / 360, matching
+     THUMB_RENDER_WIDTH in artifacts.js. The page keeps its own layout
+     instead of reflowing into a 46 px column. */
+  transform: scale(0.1278);
+  transform-origin: top left;
+  pointer-events: none;
+}
+.artifact-card-thumb[data-kind="markdown"],
+.artifact-card-thumb[data-kind="code"],
+.artifact-card-thumb[data-kind="mermaid"] { background: var(--hl-bg); }
+.artifact-thumb-text {
+  margin: 0;
+  padding: 3px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 3px;
+  line-height: 1.35;
+  color: var(--fg);
+  opacity: .75;
+  white-space: pre;
+  overflow: hidden;
+}
+
+/* The way back from a deletion. Muted on purpose: it appears only on a
+   block whose artifact the user threw away, and it should not read as a
+   suggestion to bring it back. */
+.artifact-restore {
+  display: block;
+  margin: 4px 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted, #888);
+  opacity: .7;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+.artifact-restore:hover { opacity: 1; color: var(--fg); }
+
+/* Panel fallback: the artifact, rendered, with its limits stated. */
+/* The host is a plain block, so the fallback takes its height explicitly -
+   otherwise the frame keeps an iframe's default 150px and the panel looks
+   half-empty under a rendered page. */
+.artifact-static { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+.artifact-static-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--hl-bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+.artifact-static .artifact-frame { flex: 1; min-height: 0; }
+
+/* Sidebar entry. */
+.artifact-list { padding: 8px 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.artifact-list .artifact-card { display: flex; margin: 0; }
+.artifact-list-empty { opacity: .65; font-size: 12px; padding: 4px 2px; }
+.artifact-list .artifact-card { margin: 0; }
+
+.artifact-list-panel { display: flex; z-index: 61; }
+.artifact-list-panel .artifact-list { overflow: auto; }
+.artifact-count {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  opacity: .8;
+}
+
+/* Library rows: the card, plus what you can do to it. */
+.artifact-row { display: flex; align-items: center; gap: 8px; }
+.artifact-row .artifact-card { flex: 1; min-width: 0; }
+.artifact-pick { width: 16px; height: 16px; flex: 0 0 auto; }
+.artifact-action.is-active { background: var(--hl-bg); border-color: var(--fg); }
+.artifact-danger { border-color: var(--red); color: var(--red); }
+.artifact-danger[disabled] { opacity: .45; cursor: default; }
+.artifact-primary { background: var(--hl-bg); border-color: var(--fg); }
+
+/* "What should change?" — a small sheet over the library. */
+.artifact-edit-dialog {
+  position: fixed;
+  z-index: 70;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 18px 50px rgba(0,0,0,.5);
+}
+.artifact-edit-title { margin: 0 0 2px; font-size: 15px; }
+.artifact-edit-hint { margin: 0 0 10px; font-size: 12px; opacity: .7; }
+.artifact-edit-input {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hl-bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+.artifact-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* An artifact already in the library carries a quiet mark, so the Save
+   button's "Save" vs "Update" is never a surprise. */
+.artifact-card.is-saved { border-color: var(--green); }
+.artifact-card.is-saved .artifact-card-meta::after {
+  content: " ✓ saved";
+  color: var(--green);
+}
+/* The title column stops growing, so several cards fit on one line. */
+.artifact-card-body { max-width: 150px; }

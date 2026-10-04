@@ -172,6 +172,41 @@ class EncryptedText(TypeDecorator):
         return decrypt(value)
 
 
+class SavedArtifact(TimestampMixin, Base):
+    """An artifact the user chose to keep.
+
+    Artifacts themselves are derived from the conversation that produced
+    them, so the transcript remains their home and nothing is stored to show
+    them there. This table is for the ones the user decided are worth
+    keeping past that conversation: the library holds those and only those.
+    """
+    __tablename__ = "saved_artifacts"
+
+    id = Column(String, primary_key=True, index=True)
+    owner = Column(String, nullable=False, index=True)
+    session_id = Column(String, nullable=True, index=True)
+    title = Column(String, nullable=False)
+    kind = Column(String, nullable=False, default="code")
+    lang = Column(String, nullable=False, default="")
+    code = Column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_saved_artifacts_owner_created", "owner", "created_at"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "session_id": self.session_id or "",
+            "title": self.title,
+            "kind": self.kind,
+            "lang": self.lang or "",
+            "code": self.code,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class Project(TimestampMixin, Base):
     """Owner-scoped container for related conversations and workspace state."""
     __tablename__ = "projects"

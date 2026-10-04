@@ -770,6 +770,10 @@ from routes.document.document_routes import setup_document_routes
 document_router = setup_document_routes(session_manager, upload_handler)
 app.include_router(document_router)
 
+# Artifacts (model deliverables shown beside the chat)
+from routes.artifact import setup_artifact_routes
+app.include_router(setup_artifact_routes())
+
 # Signatures (reusable image stamps)
 from routes.signature_routes import setup_signature_routes
 app.include_router(setup_signature_routes())

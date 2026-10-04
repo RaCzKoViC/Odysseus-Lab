@@ -52,6 +52,7 @@ Native installs, GPU notes, Windows/macOS instructions, HTTPS, and configuration
 - **Deep Research** — multi-step web research with source reading and report generation.
 - **Compare** — blind side-by-side model testing and synthesis.
 - **Documents** — writing-first editor with AI edits, suggestions, Markdown, HTML, CSV, and syntax highlighting.
+- **Artifacts** — pages, diagrams and long code from any model, detected in the reply and shown beside the chat with a live preview, versions, and a library of the ones you keep. See [website/artifacts.md](website/artifacts.md).
 - **Email** — IMAP/SMTP inbox with triage, tags, summaries, reminders, and reply drafts.
 - **Notes, Tasks + Calendar** — reminders, todos, scheduled agent tasks, and CalDAV sync.
 - **Extras** — gallery/image editor, themes (including the Lab's **Liquid Glass** glass-and-wallpaper look), uploads with in-chat previews, web search, presets, sessions, and 2FA.

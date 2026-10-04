@@ -104,6 +104,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             is_document_pdf_preview = True
         # Visual report pages are self-contained HTML — need inline scripts + external images
         is_report = path.startswith("/api/research/report/")
+        # Artifact previews: the model's own page, framed with
+        # sandbox="allow-scripts" and no allow-same-origin, so it runs in an
+        # opaque origin with no reach into the app. That sandbox is what lets
+        # this path carry a policy permissive enough for the artifact to work
+        # at all — under the app's own CSP its inline script would not run.
+        is_artifact_preview = path.startswith("/api/artifact/preview/")
 
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -129,6 +135,26 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         elif is_tool_render:
             # Skip framing headers for tools.
             pass
+        elif is_artifact_preview:
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            # The CSP sandbox directive makes the opaque origin a property of
+            # the response itself, not only of the <iframe sandbox> that
+            # embeds it. Without it, "Open in tab" (or any top-level visit)
+            # would run the model's inline script in the app's own origin,
+            # with access to its storage and to other same-origin windows.
+            response.headers["Content-Security-Policy"] = (
+                "sandbox allow-scripts allow-forms allow-modals allow-popups; "
+                "default-src 'none'; "
+                "script-src 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+                "style-src 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+                "font-src data: https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+                "img-src data: blob: https:; "
+                "media-src data: blob:; "
+                "connect-src 'none'; "
+                "form-action 'none'; "
+                "base-uri 'none'; "
+                "frame-ancestors 'self'"
+            )
         elif is_document_pdf_preview:
             response.headers["X-Frame-Options"] = "SAMEORIGIN"
             response.headers["Content-Security-Policy"] = (
@@ -151,7 +177,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "img-src 'self' data: blob: https:; "
                 "media-src 'self' blob:; "
                 "connect-src 'self'; "
-                "frame-src 'self'; "
+                # data: is here for artifact previews. The artifact runs in a
+                # sandboxed frame with no allow-same-origin, so it gets an
+                # opaque origin and reaches nothing of the app; a data: frame
+                # is the one local scheme that does NOT inherit this policy,
+                # which is what lets the model'"'"'s own inline script run at all.
+                "frame-src 'self' data:; "
                 "frame-ancestors 'none'"
             )
         return response
