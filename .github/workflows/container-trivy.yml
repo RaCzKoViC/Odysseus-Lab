@@ -131,3 +131,12 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-image
+
+  profile-notification:
+    name: Notify profile after checks
+    needs: [scan, publish]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.event_name != 'pull_request_target'
+    permissions: {}
+    uses: ./.github/workflows/notify-profile.yml
+    secrets:
+      PROFILE_DISPATCH_TOKEN: ${{ secrets.PROFILE_DISPATCH_TOKEN }}
