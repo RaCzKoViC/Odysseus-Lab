@@ -21,6 +21,11 @@ updates:
     ignore:
       - dependency-name: mcp
         versions: [">=2"]
+      # pydantic pins pydantic-core to an exact version, and constraints/*.txt
+      # mirror that pin. pydantic-core releases ahead of pydantic, so a solo
+      # bump (PR #15) makes the constraints unresolvable and every install job
+      # fails. Let pydantic-core follow pydantic when pydantic itself is bumped.
+      - dependency-name: pydantic-core
     groups:
       python:
         patterns: ["*"]
