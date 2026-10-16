@@ -22,7 +22,8 @@ def test_upstream_status_is_read_only_and_reports_json():
 
     assert result.returncode in (0, 2)
     payload = json.loads(result.stdout)
-    assert payload["baseline"]["commit"] == "9d5c0319149bfb69ce22a35f37cf17debaa5f14b"
+    tracked = json.loads((ROOT / "UPSTREAM_BASE").read_text(encoding="utf-8"))
+    assert payload["baseline"]["commit"] == tracked["commit"]
     assert payload["baseline"]["branch"] == "dev"
     assert [item["branch"] for item in payload["upstream"]["refs"]] == ["main", "dev"]
     assert "@" not in (payload["upstream"]["url"] or "")
